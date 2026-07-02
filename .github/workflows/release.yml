@@ -48,15 +48,10 @@ jobs:
       - name: Build release binaries
         run: npm run pkg
 
-      - name: Publish package to npm with token
-        if: ${{ secrets.NPM_TOKEN != '' }}
+      - name: Publish package to npm
         run: npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - name: Publish package to npm with trusted publishing
-        if: ${{ secrets.NPM_TOKEN == '' }}
-        run: npm publish --access public
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
