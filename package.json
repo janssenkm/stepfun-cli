@@ -1,6 +1,6 @@
 {
   "name": "@stepfun-ai/cli",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "StepFun Command Line Interface",
   "repository": {
     "type": "git",
@@ -15,7 +15,7 @@
   ],
   "main": "dist/index.js",
   "bin": {
-    "stepfun": "./dist/index.js"
+    "stepfun": "dist/index.js"
   },
   "scripts": {
     "build": "tsup src/index.ts --format cjs --minify",
