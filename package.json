@@ -2,6 +2,17 @@
   "name": "@stepfun-ai/cli",
   "version": "0.1.0",
   "description": "StepFun Command Line Interface",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/janssenkm/stepfun-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/janssenkm/stepfun-cli/issues"
+  },
+  "homepage": "https://github.com/janssenkm/stepfun-cli#readme",
+  "files": [
+    "dist"
+  ],
   "main": "dist/index.js",
   "bin": {
     "stepfun": "./dist/index.js"
@@ -19,6 +30,9 @@
       "node18-macos-x64",
       "node18-win-x64"
     ]
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "commander": "^11.1.0",
