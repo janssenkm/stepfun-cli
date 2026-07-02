@@ -1,0 +1,39 @@
+{
+  "name": "@stepfun-ai/cli",
+  "version": "0.1.0",
+  "description": "StepFun Command Line Interface",
+  "main": "dist/index.js",
+  "bin": {
+    "stepfun": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs --minify",
+    "test": "npm run build && node --test test/*.test.js",
+    "pkg": "npm run build && pkg . -t node18-win-x64,node18-linux-x64,node18-macos-x64 --out-path bin",
+    "prepublishOnly": "npm run build"
+  },
+  "pkg": {
+    "scripts": "dist/**/*.js",
+    "targets": [
+      "node18-linux-x64",
+      "node18-macos-x64",
+      "node18-win-x64"
+    ]
+  },
+  "dependencies": {
+    "commander": "^11.1.0",
+    "dotenv": "^16.3.1",
+    "form-data": "^4.0.6",
+    "node-fetch": "^2.7.0",
+    "prompts": "^2.4.2"
+  },
+  "devDependencies": {
+    "@types/form-data": "^2.2.1",
+    "@types/node": "^20.10.0",
+    "@types/node-fetch": "^2.6.9",
+    "@types/prompts": "^2.4.9",
+    "pkg": "^5.8.1",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.2"
+  }
+}
