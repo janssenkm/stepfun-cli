@@ -199,6 +199,7 @@ textCmd.command('chat')
       }
     } catch (err: any) {
       console.error(err.message);
+      process.exitCode = 1;
     }
   });
 
@@ -221,6 +222,7 @@ speechCmd.command('synthesize')
       if (!parentOptions.quiet) console.log('Done.');
     } catch (err: any) {
       console.error(err.message);
+      process.exitCode = 1;
     }
   });
 
@@ -242,6 +244,7 @@ speechCmd.command('recognize')
       }
     } catch (err: any) {
       console.error(err.message);
+      process.exitCode = 1;
     }
   });
 
@@ -267,7 +270,15 @@ imageCmd.command('edit')
       }
     } catch (err: any) {
       console.error(err.message);
+      process.exitCode = 1;
     }
   });
 
-program.parse(process.argv);
+async function main() {
+  await program.parseAsync(process.argv);
+}
+
+main().catch((err: any) => {
+  console.error(err?.message || String(err));
+  process.exitCode = 1;
+});
