@@ -26,7 +26,8 @@ function runCli(args, options = {}) {
 test('config set region rejects invalid region with non-zero exit code', () => {
   const result = runCli(['config', 'set', 'region', 'Bad-Region']);
 
-  assert.equal(result.status, 1);
+  // Invalid region is a USAGE error (exit code 2).
+  assert.equal(result.status, 2);
   assert.match(result.stderr + result.stdout, /Unknown region: Bad-Region/);
   assert.match(result.stderr + result.stdout, /StepPlan-CN, StepPlan-Global, PayGo-CN, PayGo-Global/);
 });
@@ -34,14 +35,14 @@ test('config set region rejects invalid region with non-zero exit code', () => {
 test('auth status rejects invalid --region with non-zero exit code', () => {
   const result = runCli(['--api-key', 'BAD_REGION_KEY', '--region', 'Bad-Region', 'auth', 'status']);
 
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 2);
   assert.match(result.stderr + result.stdout, /Unknown region: Bad-Region/);
 });
 
 test('business commands reject invalid --region before API calls', () => {
   const result = runCli(['--api-key', 'BAD_REGION_KEY', '--region', 'Bad-Region', 'text', 'chat', '--prompt', 'test']);
 
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 2);
   assert.match(result.stderr + result.stdout, /Unknown region: Bad-Region/);
 });
 
