@@ -1,17 +1,18 @@
-# StepFun-CLI 仓库工作规范
+# StepFun-CLI Repository Guidelines
 
-## 1. 项目定位
+## 1. Project identity
 
-本项目名为 `StepFun-CLI`，NPM 包名为 `@stepfun-ai/cli`，全局命令为 `stepfun`。工具用于在终端调用阶跃星辰（StepFun）的模型能力。
+The project is `StepFun-CLI`, the NPM package is `@stepfun-ai/cli`, and the global command is `stepfun`. It exposes StepFun model capabilities in a terminal.
 
-发布模式为 NPM-first：
+Distribution is NPM-first:
 
-- NPM 包运行入口：`dist/index.js`
-- `package.json#bin.stepfun`：`dist/index.js`
-- 运行环境：Node.js 18 或更高版本
-- 可选独立二进制仅作为 Release artifacts，不作为默认安装路径
+- NPM entry point: `dist/index.js`
+- `package.json#bin.stepfun`: `dist/index.js`
+- Package documentation: `README.md` and `README-CN.md`
+- Runtime: Node.js 18 or later
+- Standalone executables are optional release artifacts, not the default installation path
 
-可选独立二进制产物路径固定为：
+Standalone output paths are fixed:
 
 ```text
 bin/
@@ -20,64 +21,61 @@ bin/
   windows/x64/stepfun.exe
 ```
 
-## 2. 核心架构与技术栈
+## 2. Architecture and technology
 
-- **语言**：Node.js 18+ + TypeScript
-- **CLI 框架**：`commander`
-- **交互组件**：`prompts`
-- **网络请求**：Node.js 18 内置 `fetch`
-- **multipart**：Node.js 18 内置 `FormData` / `Blob`
-- **构建**：`tsc` 输出 CommonJS 到 `dist/`
-- **可选二进制打包**：`npm run pkg` 通过 `npx pkg@5.8.1` 按需下载打包工具
+- Language: Node.js 18+ and TypeScript
+- CLI framework: `commander`
+- Interactive prompts: `prompts`
+- HTTP: native Node.js 18 `fetch`
+- Multipart: native `FormData` and `Blob`
+- Build: `tsc` emits CommonJS into `dist/`
+- Optional packaging: `npm run pkg` downloads `pkg@5.8.1` on demand
 
-不得重新引入 `node-fetch`、`form-data`、`dotenv`、`tsup` 或本地 `pkg` devDependency，除非有明确需求并同步更新本文档、README、PRD 和设计文档。
+Do not reintroduce `node-fetch`, `form-data`, `dotenv`, `tsup`, or a local `pkg` development dependency unless a concrete requirement also updates this file, README, PRD, and design documentation.
 
-## 3. 支持的模型能力
+## 3. Supported models
 
-当前内置模型列表：
+- Text/chat: `step-3.5-flash`, `step-3.5-flash-2603`, `step-3.7-flash`
+- TTS: `stepaudio-2.5-tts`
+- ASR: `stepaudio-2.5-asr`
+- Image editing: `step-image-edit-2`
 
-- **文本生成 (Text/Chat)**：`step-3.5-flash`、`step-3.5-flash-2603`、`step-3.7-flash`
-- **语音合成 (Speech/TTS)**：`stepaudio-2.5-tts`
-- **语音识别 (Speech/ASR)**：`stepaudio-2.5-asr`
-- **图像编辑 (Image/Edit)**：`step-image-edit-2`
+Adding a model capability requires synchronized changes to:
 
-新增模型能力时，应同步更新：
+- model lists and command options in `src/index.ts`;
+- API wrappers in `src/api.ts`;
+- `README.md` and `README-CN.md`;
+- `docs/PRD.md` and `docs/DESIGN.md`;
+- relevant tests.
 
-- `src/index.ts` 中的模型列表和命令参数
-- `src/api.ts` 中的 API 封装
-- `README.md`
-- `docs/PRD.md`
-- `docs/DESIGN.md`
-- 相关测试
+## 4. API Region mapping
 
-## 4. API Region 映射
+API URL, Region, and Base URL changes must preserve these exact mappings:
 
-任何修改 API URL、Region、Base URL 解析逻辑时，必须严格遵循以下映射，不允许混用套餐、地区和计费模式：
-
-| Region | 描述 | Base URL |
+| Region | Description | Base URL |
 | --- | --- | --- |
-| `StepPlan-CN` | 国内版 StepPlan 套餐专用 | `https://api.stepfun.com/step_plan/v1` |
-| `StepPlan-Global` | 国际版 StepPlan 套餐专用 | `https://api.stepfun.ai/step_plan/v1` |
-| `PayGo-CN` | 国内版纯 API 按量计费 | `https://api.stepfun.com/v1` |
-| `PayGo-Global` | 国际版纯 API 按量计费 | `https://api.stepfun.ai/v1` |
+| `StepPlan-CN` | China StepPlan only | `https://api.stepfun.com/step_plan/v1` |
+| `StepPlan-Global` | Global StepPlan only | `https://api.stepfun.ai/step_plan/v1` |
+| `PayGo-CN` | China pay-as-you-go API | `https://api.stepfun.com/v1` |
+| `PayGo-Global` | Global pay-as-you-go API | `https://api.stepfun.ai/v1` |
 
-默认 Region 为 `PayGo-CN`。StepPlan Region 官方仅承诺覆盖 chat / reasoning 端点；语音和图像命令在 StepPlan Region 下执行时应给出风险提示，`--quiet` 下不提示。
+The default is `PayGo-CN`. StepPlan officially covers chat/reasoning endpoints only. Speech and image commands must warn under StepPlan unless `--quiet` is set.
 
-## 5. 配置与鉴权
+## 5. Configuration and authentication
 
-配置文件固定为：
+The configuration path is fixed:
 
 ```text
 ~/.stepfun-cli/config.json
 ```
 
-配置读取优先级固定为：
+Resolution precedence is fixed:
 
 ```text
 flag > environment > config > default
 ```
 
-支持的环境变量：
+Supported environment variables:
 
 - `STEPFUN_API_KEY`
 - `STEPFUN_REGION`
@@ -85,17 +83,17 @@ flag > environment > config > default
 - `STEPFUN_OUTPUT`
 - `STEPFUN_TIMEOUT`
 
-认证命令：
+Authentication commands:
 
-- `stepfun auth login`：交互选择四个 Region 之一，再隐藏输入 API Key
-- `stepfun auth status`：输出认证状态、认证来源、掩码后的 API Key、Region、Base URL
-- `stepfun auth logout [--yes]`：清除本地凭据与配置
+- `stepfun auth login`: interactively select one of four Regions and read a hidden API key.
+- `stepfun auth status`: show status, source, masked key, Region, and Base URL.
+- `stepfun auth logout [--yes]`: clear local credentials and configuration.
 
-`auth status` 和 `config show` 必须掩码显示 API Key。dry-run、错误输出、调试输出不得泄露 API Key 或文件二进制内容。
+`auth status` and `config show` must mask API keys. Dry run, errors, verbose output, and diagnostics must not expose keys or binary file contents.
 
-## 6. 命令与参数边界
+## 6. Commands and options
 
-当前命令树：
+Current command tree:
 
 ```text
 stepfun
@@ -112,7 +110,7 @@ stepfun
   image edit
 ```
 
-全局参数：
+Global options:
 
 - `--api-key <key>`
 - `--region <region>`
@@ -125,23 +123,23 @@ stepfun
 - `--verbose`
 - `--no-color`
 
-`--dry-run` 必须满足：
+Dry run must:
 
-- 不要求 API Key
-- 不创建 API client
-- 不发起网络请求
-- 输出请求摘要
-- 文件只显示 path/size 或 path/error
+- work without an API key;
+- avoid creating an API client;
+- avoid network requests;
+- print a request summary;
+- represent files only as path/size or path/error.
 
-## 7. 输出与错误处理
+## 7. Output and errors
 
-默认输出策略：
+Default output:
 
-- stdout 是 TTY 时默认 `text`
-- stdout 不是 TTY 时默认 `json`
-- `--output`、`STEPFUN_OUTPUT` 和配置文件可覆盖
+- stdout is a TTY: `text`
+- stdout is not a TTY: `json`
+- `--output`, `STEPFUN_OUTPUT`, and configuration may override detection
 
-错误固定输出到 stderr。JSON 错误信封格式：
+Errors always go to stderr. JSON errors use:
 
 ```json
 {
@@ -153,19 +151,19 @@ stepfun
 }
 ```
 
-退出码：
+Exit codes:
 
-| 退出码 | 类型 | 场景 |
+| Code | Type | Scenario |
 | --- | --- | --- |
-| `0` | OK | 成功 |
-| `1` | API_ERROR | 非鉴权类 API 错误 |
-| `2` | USAGE | 参数非法、未知配置键、非交互命令需要确认 |
-| `3` | AUTH | 缺少 API Key、401、403 |
-| `6` | NETWORK | 网络失败、DNS、连接拒绝、超时 |
+| `0` | OK | Success |
+| `1` | API_ERROR | Non-authentication API error |
+| `2` | USAGE | Invalid arguments, unknown config key, or missing confirmation |
+| `3` | AUTH | Missing API key, HTTP 401, or HTTP 403 |
+| `6` | NETWORK | Fetch, DNS, connection, or timeout failure |
 
-## 8. 开发与发布
+## 8. Development and release
 
-常用命令：
+Common commands:
 
 ```bash
 npm install
@@ -174,7 +172,7 @@ npm test
 npm pack --dry-run
 ```
 
-构建输出：
+Build output:
 
 ```text
 dist/
@@ -185,19 +183,20 @@ dist/
   version.js
 ```
 
-可选二进制打包：
+Optional packaging:
 
 ```bash
 npm run pkg
 ```
 
-该命令会按需下载 `pkg@5.8.1`，生成 `bin/{os}/x64/stepfun(.exe)`。`bin/` 不进入 NPM 包。
+This downloads `pkg@5.8.1` on demand and writes `bin/{os}/x64/stepfun(.exe)`. `bin/` must not be included in the NPM package.
 
-## 9. 文档职责
+## 9. Documentation responsibilities
 
-- `README.md`：用户安装、配置、命令、开发与发布说明
-- `docs/PRD.md`：产品范围、功能需求、验收标准
-- `docs/DESIGN.md`：架构、命令树、配置解析、HTTP、输出、错误、安全和测试策略
-- `AGENTS.md`：智能体修改本仓库时必须遵守的核心行为规范
+- `README.md`: English user installation, configuration, commands, development, and release documentation.
+- `README-CN.md`: synchronized Chinese user documentation.
+- `docs/PRD.md`: product scope, requirements, and acceptance criteria in English.
+- `docs/DESIGN.md`: architecture, configuration, HTTP, output, errors, security, and testing in English.
+- `AGENTS.md`: mandatory repository rules in English.
 
-不要在 `AGENTS.md` 附带 README 的完整副本。README 内容更新时，应只在必要时同步本文件中的硬性约束。
+Code comments must be English. User-facing localized strings may remain Chinese where required by the interface. Do not duplicate the complete README inside `AGENTS.md`; keep only durable constraints here.

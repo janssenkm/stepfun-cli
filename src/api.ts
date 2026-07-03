@@ -10,6 +10,7 @@ interface AsrEvent {
   [key: string]: unknown;
 }
 
+/** Normalized state accumulated from an OpenAI-compatible chat stream. */
 export interface ChatStreamResult {
   content: string;
   reasoningContent: string;
@@ -18,6 +19,10 @@ export interface ChatStreamResult {
   usage?: Record<string, unknown>;
 }
 
+/**
+ * Incrementally parses SSE data fields without assuming network chunks align
+ * with lines or event boundaries. Comment, event, and id fields are ignored.
+ */
 async function* parseSSE(response: Response): AsyncGenerator<string> {
   const reader = response.body?.getReader();
   if (!reader) return;
@@ -62,6 +67,7 @@ async function* parseSSE(response: Response): AsyncGenerator<string> {
   }
 }
 
+/** Extracts visible text from string or content-block response variants. */
 function contentText(content: unknown): string {
   if (typeof content === 'string') return content;
   if (!Array.isArray(content)) return '';
@@ -73,6 +79,7 @@ function contentText(content: unknown): string {
   }).join('');
 }
 
+/** Returns only user-visible assistant text from a non-streaming response. */
 export function extractAssistantText(response: any): string {
   return contentText(response?.choices?.[0]?.message?.content);
 }
@@ -121,6 +128,7 @@ export class StepFunClient {
     };
   }
 
+  /** Sends a non-streaming chat completion request and returns the API payload. */
   async chatCompletion(
     model: string,
     messages: any[],
@@ -145,6 +153,10 @@ export class StepFunClient {
     return await response.json();
   }
 
+  /**
+   * Streams visible text through callbacks while retaining reasoning, tool
+   * calls, finish metadata, and usage in the normalized return value.
+   */
   async chatCompletionStream(
     model: string,
     messages: any[],
@@ -211,6 +223,7 @@ export class StepFunClient {
     return result;
   }
 
+  /** Synthesizes speech and returns the response audio as a Buffer. */
   async audioSynthesize(
     model: string,
     input: string,
@@ -237,6 +250,7 @@ export class StepFunClient {
     return Buffer.from(await response.arrayBuffer());
   }
 
+  /** Uploads supported audio as Base64 JSON and resolves the final SSE result. */
   async audioTranscribe(
     model: string,
     filePath: string,
@@ -294,6 +308,7 @@ export class StepFunClient {
     return { text, event: done || events[events.length - 1] } as TranscriptionResult;
   }
 
+  /** Sends a multipart image-edit request and returns the API JSON payload. */
   async imageEdit(
     model: string,
     imagePath: string,

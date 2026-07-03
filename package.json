@@ -14,7 +14,8 @@
     "node": ">=18"
   },
   "files": [
-    "dist"
+    "dist",
+    "README-CN.md"
   ],
   "main": "dist/index.js",
   "bin": {
