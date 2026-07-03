@@ -90,7 +90,7 @@ test('CLI auth and endpoint options override environment, which overrides config
 
     // Environment now wins over the persisted config.
     const fromEnv = await runCli(
-      ['--output', 'text', '--base-url', envServer.url, 'text', 'chat', '--prompt', 'one'],
+      ['--output', 'text', '--base-url', envServer.url, 'text', 'chat', '--message', 'one'],
       { home, env: { STEPFUN_API_KEY: 'ENV_KEY' } }
     );
     assert.equal(fromEnv.status, 0, fromEnv.stderr);
@@ -101,7 +101,7 @@ test('CLI auth and endpoint options override environment, which overrides config
       '--api-key', 'FLAG_KEY',
       '--base-url', overrideServer.url,
       '--output', 'text',
-      'text', 'chat', '--prompt', 'two'
+      'text', 'chat', '--message', 'two'
     ], { home, env: { STEPFUN_API_KEY: 'ENV_KEY' } });
     assert.equal(overridden.status, 0, overridden.stderr);
     assert.equal(overridden.stdout.trim(), 'overridden');
@@ -122,7 +122,7 @@ test('environment key is used when no flag or persisted key exists', async () =>
 });
 
 test('missing authentication fails before making a network request', async () => {
-  const result = await runCli(['text', 'chat', '--prompt', 'must not send']);
+  const result = await runCli(['text', 'chat', '--message', 'must not send']);
   // Missing API key is an AUTH error (exit code 3).
   assert.equal(result.status, 3);
   assert.equal(result.stdout, '');
@@ -150,7 +150,7 @@ test('API non-success status is reported verbatim and exits non-zero', async () 
   try {
     const result = await runCli([
       '--api-key', 'error-key', '--base-url', server.url,
-      'text', 'chat', '--prompt', 'trigger error'
+      'text', 'chat', '--message', 'trigger error'
     ]);
     // 429 is a generic API error (exit code 1). The runner is not a TTY, so
     // the error is emitted as a structured JSON envelope on stderr.
@@ -176,12 +176,12 @@ test('chat text output extracts content while JSON output preserves the response
   });
   try {
     const common = ['--api-key', 'output-key', '--base-url', server.url];
-    const textResult = await runCli([...common, '--output', 'text', 'text', 'chat', '--prompt', 'text']);
+    const textResult = await runCli([...common, '--output', 'text', 'text', 'chat', '--message', 'text']);
     assert.equal(textResult.status, 0, textResult.stderr);
     assert.equal(textResult.stdout.trim(), 'formatted answer');
 
     const jsonResult = await runCli([
-      ...common, '--output', 'json', 'text', 'chat', '--prompt', 'json'
+      ...common, '--output', 'json', 'text', 'chat', '--message', 'json'
     ]);
     assert.equal(jsonResult.status, 0, jsonResult.stderr);
     assert.deepEqual(JSON.parse(jsonResult.stdout), payload);
@@ -195,7 +195,7 @@ test('chat text output extracts content while JSON output preserves the response
 // emits `{ error: { code, message, hint? } }` on stderr.
 
 test('missing API key exits AUTH(3) and emits a JSON AUTH envelope on stderr', async () => {
-  const result = await runCli(['--output', 'json', 'text', 'chat', '--prompt', 'no key']);
+  const result = await runCli(['--output', 'json', 'text', 'chat', '--message', 'no key']);
   assert.equal(result.status, 3);
   assert.equal(result.stdout, '');
   const envelope = JSON.parse(result.stderr);
@@ -206,7 +206,7 @@ test('missing API key exits AUTH(3) and emits a JSON AUTH envelope on stderr', a
 test('NaN --temperature exits USAGE(2) and emits a JSON USAGE envelope on stderr', async () => {
   const result = await runCli([
     '--api-key', 'USAGE_KEY', '--output', 'json',
-    'text', 'chat', '--prompt', 'hi', '--temperature', 'abc'
+    'text', 'chat', '--message', 'hi', '--temperature', 'abc'
   ]);
   assert.equal(result.status, 2);
   assert.equal(result.stdout, '');
@@ -223,7 +223,7 @@ test('an unreachable host exits NETWORK(6) with a JSON NETWORK envelope on stder
     '--base-url', 'http://127.0.0.1:1/v1',
     '--output', 'json',
     '--timeout', '3',
-    'text', 'chat', '--prompt', 'hi'
+    'text', 'chat', '--message', 'hi'
   ]);
   assert.equal(result.status, 6);
   assert.equal(result.stdout, '');
@@ -241,7 +241,7 @@ test('a 401 response exits AUTH(3) with a JSON AUTH envelope on stderr', async (
     const result = await runCli([
       '--api-key', 'BAD_KEY', '--base-url', server.url,
       '--output', 'json',
-      'text', 'chat', '--prompt', 'hi'
+      'text', 'chat', '--message', 'hi'
     ]);
     assert.equal(result.status, 3);
     assert.equal(result.stdout, '');
@@ -262,7 +262,7 @@ test('a successful request still exits 0 (regression after error-code refactor)'
     const result = await runCli([
       '--api-key', 'OK_KEY', '--base-url', server.url,
       '--output', 'text',
-      'text', 'chat', '--prompt', 'hi'
+      'text', 'chat', '--message', 'hi'
     ]);
     assert.equal(result.status, 0);
     assert.equal(result.stdout.trim(), 'ok');

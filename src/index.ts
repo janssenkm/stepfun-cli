@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { loadConfig, saveConfig, REGION_PROFILES } from './config';
-import { StepFunClient, APIError } from './api';
+import { StepFunClient, APIError, extractAssistantText } from './api';
 import { CLI_VERSION } from './version';
 import fs from 'fs';
 import prompts from 'prompts';
@@ -191,14 +191,10 @@ program
   .option('--no-color', 'Disable ANSI colors and spinners');
 
 program.command('update')
-  .description('Check for and install the latest NPM release')
-  .option('--check', 'Only check whether an update is available')
-  .option('--registry <url>', 'NPM registry URL', 'https://registry.npmjs.org')
-  .action(async (options) => {
-    const exitCode = await runUpdate({
-      currentVersion: CLI_VERSION,
-      checkOnly: options.check,
-      registry: options.registry
+  .description('Show how to update to the latest NPM release')
+  .action(() => {
+    const exitCode = runUpdate({
+      currentVersion: CLI_VERSION
     });
     if (exitCode !== 0) process.exitCode = exitCode;
   });
@@ -293,6 +289,10 @@ function fileStat(filePath: string): { path: string; size: number } | { path: st
   } catch (err: any) {
     return { path: filePath, error: err.message };
   }
+}
+
+function collectOption(value: string, previous: string[] = []): string[] {
+  return previous.concat(value);
 }
 
 // Auth Command
@@ -498,7 +498,8 @@ const textCmd = program.command('text').description('Text generation (chat)');
 
 textCmd.command('chat')
   .description('Start a chat completion')
-  .option('-p, --prompt <text>', 'Prompt text (at least one of --prompt / --messages-file is required)')
+  .option('--message <text>', 'Message text (repeatable; prefix with system:, user:, or assistant: to set role)', collectOption)
+  .option('-p, --prompt <text>', 'Alias for --message (repeatable)', collectOption)
   .option('-m, --model <model>', 'Model name (defaults to config default_text_model or step-3.5-flash)')
   .option('--temperature <number>', 'Sampling temperature')
   .option('--top-p <number>', 'Nucleus sampling probability (top_p)')
@@ -510,6 +511,11 @@ textCmd.command('chat')
   .action(async (options) => {
     const parentOptions = program.opts();
     try {
+      // --message is canonical and repeatable;
+      // --prompt remains an alias and is used only when --message is absent.
+      const explicitMessages: string[] = options.message || [];
+      const promptAliases: string[] = options.prompt || [];
+      const rawMessages = explicitMessages.length > 0 ? explicitMessages : promptAliases;
       // Numeric validation: surface bad input explicitly rather than sending NaN.
       const temperature = options.temperature !== undefined ? Number(options.temperature) : undefined;
       const topP = options.topP !== undefined ? Number(options.topP) : undefined;
@@ -525,15 +531,15 @@ textCmd.command('chat')
       }
 
       if (parentOptions.dryRun) {
-        if (options.prompt === undefined && options.messagesFile === undefined) {
-          throw new UsageError('at least one of --prompt / --messages-file is required');
+        if (rawMessages.length === 0 && options.messagesFile === undefined) {
+          throw new UsageError('at least one of --message / --messages-file is required');
         }
         const detail: Record<string, unknown> = { model: resolveTextModel(options) };
         if (options.system !== undefined) detail.system = options.system;
         if (temperature !== undefined) detail.temperature = temperature;
         if (topP !== undefined) detail.top_p = topP;
         if (maxTokens !== undefined) detail.max_tokens = maxTokens;
-        if (options.prompt !== undefined) detail.prompt = options.prompt;
+        if (rawMessages.length > 0) detail.message = rawMessages;
         if (options.messagesFile !== undefined) detail.messages_file = options.messagesFile;
         dryRun(parentOptions, 'text chat', 'POST', '/chat/completions', detail);
         return;
@@ -541,9 +547,9 @@ textCmd.command('chat')
 
       const client = getClient(parentOptions);
 
-      // Build messages. --messages-file may supply the whole conversation; a
-      // passed --prompt is appended as a trailing user turn. --system always
-      // leads. At least one of --prompt / --messages-file is required.
+      // Build messages. --messages-file may supply the whole conversation.
+      // A passed --message is appended as a trailing turn. --system always
+      // leads. At least one of --message / --messages-file is required.
       let fileMessages: any[] = [];
       if (options.messagesFile !== undefined) {
         const raw = options.messagesFile === '-'
@@ -561,14 +567,24 @@ textCmd.command('chat')
         fileMessages = parsed;
       }
 
-      if (options.prompt === undefined && options.messagesFile === undefined) {
-        throw new UsageError('at least one of --prompt / --messages-file is required');
+      if (rawMessages.length === 0 && options.messagesFile === undefined) {
+        throw new UsageError('at least one of --message / --messages-file is required');
       }
 
       const messages: any[] = [];
-      if (options.system) messages.push({ role: 'system', content: options.system });
+      let system = options.system;
+      const parsedMessages: any[] = [];
+      for (const rawMessage of rawMessages) {
+        const separator = rawMessage.indexOf(':');
+        const role = separator === -1 ? '' : rawMessage.slice(0, separator);
+        const content = separator === -1 ? rawMessage : rawMessage.slice(separator + 1);
+        if (role === 'system') system = content;
+        else if (role === 'user' || role === 'assistant') parsedMessages.push({ role, content });
+        else parsedMessages.push({ role: 'user', content: rawMessage });
+      }
+      if (system) messages.push({ role: 'system', content: system });
       messages.push(...fileMessages);
-      if (options.prompt !== undefined) messages.push({ role: 'user', content: options.prompt });
+      messages.push(...parsedMessages);
 
       const opts: { temperature?: number; top_p?: number; max_tokens?: number } = {};
       if (temperature !== undefined) opts.temperature = temperature;
@@ -586,11 +602,23 @@ textCmd.command('chat')
 
       const model = resolveTextModel(options);
       if (wantStream) {
+        let reasoningStarted = false;
+        let responseStarted = false;
         await client.chatCompletionStream(
           model,
           messages,
-          (text) => process.stdout.write(text),
-          apiOpts
+          (text) => {
+            if (reasoningStarted && !responseStarted && !parentOptions.quiet) {
+              process.stderr.write('Response:\n');
+            }
+            responseStarted = true;
+            process.stdout.write(text);
+          },
+          apiOpts,
+          () => {
+            if (!reasoningStarted && !parentOptions.quiet) process.stderr.write('Thinking...\n');
+            reasoningStarted = true;
+          }
         );
         process.stdout.write('\n');
       } else {
@@ -598,8 +626,7 @@ textCmd.command('chat')
         if (output === 'json') {
           console.log(JSON.stringify(result, null, 2));
         } else {
-          const content = result.choices?.[0]?.message?.content || '';
-          console.log(content);
+          console.log(extractAssistantText(result));
         }
       }
     } catch (err: any) {

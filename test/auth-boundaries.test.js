@@ -40,7 +40,7 @@ test('auth status rejects invalid --region with non-zero exit code', () => {
 });
 
 test('business commands reject invalid --region before API calls', () => {
-  const result = runCli(['--api-key', 'BAD_REGION_KEY', '--region', 'Bad-Region', 'text', 'chat', '--prompt', 'test']);
+  const result = runCli(['--api-key', 'BAD_REGION_KEY', '--region', 'Bad-Region', 'text', 'chat', '--message', 'test']);
 
   assert.equal(result.status, 2);
   assert.match(result.stderr + result.stdout, /Unknown region: Bad-Region/);

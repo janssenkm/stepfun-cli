@@ -23,14 +23,14 @@ stepfun --version
 ```bash
 stepfun auth login
 stepfun auth status
-stepfun text chat --prompt "用一句话介绍阶跃星辰"
+stepfun text chat --message "用一句话介绍阶跃星辰"
 ```
 
 在 CI 或其他非交互环境中，建议通过环境变量注入密钥，并显式指定输出格式：
 
 ```bash
 export STEPFUN_API_KEY="YOUR_API_KEY"
-stepfun --region PayGo-CN --output json text chat --prompt "返回一句问候"
+stepfun --region PayGo-CN --output json text chat --message "返回一句问候"
 ```
 
 如需在没有 Node.js/npm 的环境运行，也可以从项目 Release 获取可选的独立二进制附件：Linux 为 `bin/linux/x64/stepfun`，macOS 为 `bin/macos/x64/stepfun`，Windows 为 `bin/windows/x64/stepfun.exe`。独立二进制不是默认安装路径，且不能通过 `stepfun update` 自升级。
@@ -119,7 +119,7 @@ stepfun config set base_url "https://proxy.example.com/v1"
 
 ```bash
 stepfun config set default_text_model step-3.7-flash
-stepfun text chat --prompt "你好"          # 实际使用 step-3.7-flash
+stepfun text chat --message "你好"         # 实际使用 step-3.7-flash
 
 stepfun config set default_speech_model stepaudio-2.5-tts
 stepfun speech synthesize --text "你好"    # 实际使用 stepaudio-2.5-tts
@@ -165,23 +165,22 @@ chmod 600 ~/.stepfun-cli/config.json
 
 ### 更新 CLI
 
-检查 NPM 上的最新版但不安装：
-
-```bash
-stepfun update --check
-```
-
-升级通过 NPM 全局安装的 CLI：
+查看当前版本和升级命令：
 
 ```bash
 stepfun update
 ```
 
-命令会显示当前版本和最新版；检查或 `npm install --global @stepfun-ai/cli@latest` 失败时返回非零退出码。独立可执行文件不能通过 NPM 自升级，命令会停止并提示从项目 Releases 页面下载最新版。私有镜像可通过 `--registry <url>` 指定：
+输出示例：
 
-```bash
-stepfun update --check --registry https://registry.npmmirror.com
+```text
+Current version: 0.1.1
+
+Run:
+  npm update -g @stepfun-ai/cli
 ```
+
+该命令不访问 NPM registry，也不会自动修改全局安装；复制输出的命令执行升级。独立可执行文件不能通过 NPM 更新，会提示从项目 Releases 页面下载最新版。
 
 查看内置帮助和模型列表：
 
@@ -195,28 +194,40 @@ stepfun --output json models list
 
 ```bash
 stepfun text chat \
-  --prompt "Hello, who are you?" \
+  --message "Hello, who are you?" \
   --model step-3.5-flash
 ```
 
 默认模型为 `step-3.5-flash`（未传 `-m` 时按 `--model` > 配置 `default_text_model` > `step-3.5-flash` 解析，可通过 `config set default_text_model` 修改）。需要原始 API 响应时，将全局参数放在子命令之前：
 
 ```bash
-stepfun --output json text chat --prompt "你好" --model step-3.7-flash
+stepfun --output json text chat --message "你好" --model step-3.7-flash
 ```
 
 可选参数（仅在传入时写入请求体，未传则保持服务端默认）：
 
 | 参数 | 说明 | 对应字段 |
 | --- | --- | --- |
-| `-p, --prompt <text>` | 用户提示词；与 `--messages-file` 至少传一个 | 追加为末尾 `{role:'user'}` |
+| `--message <text>` | 消息文本，可重复；可用 `system:`、`user:`、`assistant:` 前缀指定角色 | 追加到 messages |
+| `-p, --prompt <text>` | `--message` 的兼容别名，可重复；同时使用时以 `--message` 为准 | 追加到 messages |
 | `--system <text>` | 系统消息，置于所有消息最前 | messages 首条 `{role:'system'}` |
 | `--messages-file <path\|->` | 从文件或 stdin（`-`）读取 JSON 数组作为 messages | body.messages |
 | `--temperature <number>` | 采样温度 | body.temperature |
 | `--top-p <number>` | 核采样概率 | body.top_p |
 | `--max-tokens <int>` | 最大生成 token 数 | body.max_tokens |
 
-`--prompt` 与 `--messages-file` 的组合规则：二者至少传一个，否则报错退出。`--messages-file` 提供的消息数组按原样发送，传入 `--prompt` 时会作为末尾 user 消息追加；`--system` 始终插在最前。从 stdin 读取示例：
+`--message`（或兼容别名 `--prompt`）与 `--messages-file` 至少传一个，否则报错退出。裸消息作为 `user` 消息；带有效角色前缀的消息按对应角色处理。`--message` 可重复，并追加在 `--messages-file` 提供的消息之后；`system:` 消息会覆盖 `--system`。同时传入 `--message` 和 `--prompt` 时，只使用 `--message`。
+
+多轮消息示例：
+
+```bash
+stepfun text chat \
+  --message "user:你好" \
+  --message "assistant:你好，有什么可以帮你？" \
+  --message "介绍一下阶跃星辰"
+```
+
+从 stdin 读取示例：
 
 ```bash
 echo '[{"role":"user","content":"hi"}]' | stepfun text chat --messages-file -
@@ -234,10 +245,12 @@ echo '[{"role":"user","content":"hi"}]' | stepfun text chat --messages-file -
 在已有上下文后追加一轮提问：
 
 ```bash
-stepfun text chat --messages-file messages.json --prompt "请按城区分类"
+stepfun text chat --messages-file messages.json --message "请按城区分类"
 ```
 
 流式输出：当输出格式不是 `--output json` 且 stdout 是终端（TTY）时，`text chat` 默认开启流式，逐 token 打印响应内容直至结束换行。可用 `--stream` 显式开启、`--no-stream` 显式关闭。`--output json` 与流式不兼容（需要完整 JSON 对象），即使传入 `--stream` 也会强制走非流式路径并输出完整响应。流式同样透传 `--temperature`/`--top-p`/`--max-tokens` 等可选参数。
+
+流式响应会分别累积正文、`reasoning_content`、工具调用、结束原因和 usage。文本模式只把正文写入 stdout；检测到推理内容时在 stderr 显示 `Thinking...`，正文开始时显示 `Response:`，不会输出原始推理内容。`--quiet` 会关闭这些状态提示。JSON 模式使用非流式请求并保留服务端完整响应。
 
 ### 语音合成
 
@@ -369,7 +382,7 @@ stepfun image edit \
 
 ```bash
 stepfun --dry-run --output json --region PayGo-Global \
-  text chat --model step-3.7-flash --prompt "你好"
+  text chat --model step-3.7-flash --message "你好"
 
 stepfun --dry-run --output json image edit \
   --file input.png --prompt "提升清晰度"
@@ -394,7 +407,7 @@ CLI 按错误类别返回结构化退出码，便于脚本与 CI 判定失败原
 | --- | --- | --- |
 | `0` | 成功 | 正常完成 |
 | `1` | 通用 / API 错误 | HTTP 非 2xx（非 401/403），如 429 限流、400 参数错误、500 服务端错误 |
-| `2` | USAGE（参数非法） | 未知 Region、`--temperature`/`--top-p`/`--max-tokens`/`--timeout` 等数值参数为 NaN、`text chat` 既无 `--prompt` 又无 `--messages-file`、`config set` 未知键、`--non-interactive` 下的 `auth login`/`auth logout` |
+| `2` | USAGE（参数非法） | 未知 Region、`--temperature`/`--top-p`/`--max-tokens`/`--timeout` 等数值参数为 NaN、`text chat` 既无 `--message`/`--prompt` 又无 `--messages-file`、`config set` 未知键、`--non-interactive` 下的 `auth login`/`auth logout` |
 | `3` | AUTH（鉴权） | 缺少 API Key、401、403 |
 | `6` | NETWORK（网络） | fetch 网络失败、连接拒绝、DNS 解析失败、`--timeout` 触发的 abort |
 

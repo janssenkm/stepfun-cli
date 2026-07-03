@@ -105,7 +105,7 @@ test('text chat sends configured auth and request body to the API endpoint', asy
     assert.equal((await runCli(['config', 'set', 'api_key', 'E2E_TEXT_KEY'], { home })).status, 0);
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
-    const result = await runCli(['--output', 'text', 'text', 'chat', '--prompt', 'hello e2e', '--model', 'step-3.7-flash'], { home });
+    const result = await runCli(['--output', 'text', 'text', 'chat', '--message', 'hello e2e', '--model', 'step-3.7-flash'], { home });
     assert.equal(result.status, 0);
     assert.equal(result.stdout.trim(), 'mocked reply');
     assert.equal(server.requests.length, 1);
@@ -405,7 +405,7 @@ test('StepPlan text chat does not emit the non-covered warning', async () => {
     assert.equal((await runCli(['config', 'set', 'region', 'StepPlan-CN'], { home })).status, 0);
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
-    const result = await runCli(['text', 'chat', '--prompt', 'hi'], { home });
+    const result = await runCli(['text', 'chat', '--message', 'hi'], { home });
     assert.equal(result.status, 0, result.stderr);
     assert.doesNotMatch(result.stderr, /not covered by official docs/);
   } finally {
@@ -426,7 +426,7 @@ test('text chat forwards optional sampling params and prepends the system messag
 
     const result = await runCli([
       'text', 'chat',
-      '--prompt', 'hi',
+      '--message', 'hi',
       '--temperature', '0.1',
       '--max-tokens', '50',
       '--top-p', '0.8',
@@ -448,7 +448,7 @@ test('text chat forwards optional sampling params and prepends the system messag
   }
 });
 
-test('text chat --messages-file - reads a messages array from stdin and --prompt appends a user turn', async () => {
+test('text chat --messages-file - reads a messages array from stdin and --message appends a user turn', async () => {
   const server = await startMockServer(async (_req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
@@ -466,7 +466,7 @@ test('text chat --messages-file - reads a messages array from stdin and --prompt
     const fileResult = await runCli([
       'text', 'chat',
       '--messages-file', messagesFile,
-      '--prompt', 'tail turn'
+      '--message', 'tail turn'
     ], { home });
     assert.equal(fileResult.status, 0, fileResult.stderr);
     const fileBody = JSON.parse(server.requests[server.requests.length - 1].body);
@@ -488,12 +488,47 @@ test('text chat --messages-file - reads a messages array from stdin and --prompt
   }
 });
 
-test('text chat without --prompt or --messages-file exits non-zero', async () => {
+test('text chat --message is repeatable with role prefixes and --prompt remains an alias', async () => {
+  const server = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
+  });
+  try {
+    const home = makeHome();
+    assert.equal((await runCli(['config', 'set', 'api_key', 'E2E_MULTI_KEY'], { home })).status, 0);
+    assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
+
+    const messageResult = await runCli([
+      'text', 'chat',
+      '--message', 'system:be concise',
+      '--message', 'user:hello',
+      '--message', 'assistant:hi',
+      '--message', 'continue'
+    ], { home });
+    assert.equal(messageResult.status, 0, messageResult.stderr);
+    assert.deepEqual(JSON.parse(server.requests.at(-1).body).messages, [
+      { role: 'system', content: 'be concise' },
+      { role: 'user', content: 'hello' },
+      { role: 'assistant', content: 'hi' },
+      { role: 'user', content: 'continue' }
+    ]);
+
+    const promptResult = await runCli(['text', 'chat', '--prompt', 'legacy'], { home });
+    assert.equal(promptResult.status, 0, promptResult.stderr);
+    assert.deepEqual(JSON.parse(server.requests.at(-1).body).messages, [
+      { role: 'user', content: 'legacy' }
+    ]);
+  } finally {
+    await server.close();
+  }
+});
+
+test('text chat without --message or --messages-file exits non-zero', async () => {
   const home = makeHome();
   assert.equal((await runCli(['config', 'set', 'api_key', 'E2E_REQ_KEY'], { home })).status, 0);
   const result = await runCli(['text', 'chat'], { home });
   assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /at least one of --prompt \/ --messages-file/);
+  assert.match(result.stderr, /at least one of --message \/ --messages-file/);
 });
 
 // Mock handler that serves SSE when stream:true is requested, JSON otherwise.
@@ -519,7 +554,7 @@ test('text chat --stream prints streamed tokens followed by a trailing newline',
     assert.equal((await runCli(['config', 'set', 'api_key', 'E2E_STREAM_KEY'], { home })).status, 0);
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
-    const result = await runCli(['--output', 'text', 'text', 'chat', '--stream', '--prompt', 'hi'], { home });
+    const result = await runCli(['--output', 'text', 'text', 'chat', '--stream', '--message', 'hi'], { home });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout, 'Hello\n');
 
@@ -532,6 +567,34 @@ test('text chat --stream prints streamed tokens followed by a trailing newline',
   }
 });
 
+test('text chat stream reports reasoning status on stderr without exposing reasoning text', async () => {
+  const server = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.write('data: {"choices":[{"delta":{"reasoning_content":"private reasoning"}}]}\n\n');
+    res.write('data: {"choices":[{"delta":{"content":"answer"}}]}\n\n');
+    res.end('data: [DONE]\n\n');
+  });
+  try {
+    const home = makeHome();
+    assert.equal((await runCli(['config', 'set', 'api_key', 'E2E_REASON_KEY'], { home })).status, 0);
+    assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
+
+    const result = await runCli(['--output', 'text', 'text', 'chat', '--stream', '--message', 'hi'], { home });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'answer\n');
+    assert.match(result.stderr, /Thinking/);
+    assert.match(result.stderr, /Response/);
+    assert.doesNotMatch(result.stdout + result.stderr, /private reasoning/);
+
+    const quiet = await runCli(['--quiet', '--output', 'text', 'text', 'chat', '--stream', '--message', 'hi'], { home });
+    assert.equal(quiet.status, 0, quiet.stderr);
+    assert.equal(quiet.stdout, 'answer\n');
+    assert.equal(quiet.stderr, '');
+  } finally {
+    await server.close();
+  }
+});
+
 test('text chat --no-stream falls back to the non-streaming JSON path', async () => {
   const server = await startMockServer(chatStreamOrJsonHandler);
   try {
@@ -539,7 +602,7 @@ test('text chat --no-stream falls back to the non-streaming JSON path', async ()
     assert.equal((await runCli(['config', 'set', 'api_key', 'E2E_NOSTREAM_KEY'], { home })).status, 0);
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
-    const result = await runCli(['--output', 'text', 'text', 'chat', '--no-stream', '--prompt', 'hi'], { home });
+    const result = await runCli(['--output', 'text', 'text', 'chat', '--no-stream', '--message', 'hi'], { home });
     assert.equal(result.status, 0, result.stderr);
     assert.equal(result.stdout.trim(), 'mocked reply');
     assert.equal(JSON.parse(server.requests[0].body).stream, undefined);
@@ -556,7 +619,7 @@ test('text chat --output json forces non-streaming even when --stream is passed'
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
     const result = await runCli(
-      ['--output', 'json', 'text', 'chat', '--stream', '--prompt', 'hi'],
+      ['--output', 'json', 'text', 'chat', '--stream', '--message', 'hi'],
       { home }
     );
     assert.equal(result.status, 0, result.stderr);
@@ -578,7 +641,7 @@ test('text chat --stream forwards sampling params alongside stream:true', async 
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
     const result = await runCli(
-      ['--output', 'text', 'text', 'chat', '--stream', '--temperature', '0.5', '--prompt', 'hi'],
+      ['--output', 'text', 'text', 'chat', '--stream', '--temperature', '0.5', '--message', 'hi'],
       { home }
     );
     assert.equal(result.status, 0, result.stderr);
@@ -741,7 +804,7 @@ test('regression: commands without the new optional params omit them entirely fr
     assert.equal((await runCli(['config', 'set', 'api_key', 'E2E_REGR_KEY'], { home })).status, 0);
 
     // chat
-    assert.equal((await runCli(['--base-url', chatServer.baseUrl, 'text', 'chat', '--prompt', 'hi'], { home })).status, 0);
+    assert.equal((await runCli(['--base-url', chatServer.baseUrl, 'text', 'chat', '--message', 'hi'], { home })).status, 0);
     const chatBody = JSON.parse(chatServer.requests[0].body);
     assert.equal('temperature' in chatBody, false);
     assert.equal('top_p' in chatBody, false);
@@ -829,7 +892,7 @@ test('--timeout <seconds> aborts a request that exceeds the configured timeout',
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
     const result = await runCli(
-      ['--output', 'text', '--timeout', '1', 'text', 'chat', '--prompt', 'hi'],
+      ['--output', 'text', '--timeout', '1', 'text', 'chat', '--message', 'hi'],
       { home }
     );
     assert.notEqual(result.status, 0);
@@ -851,7 +914,7 @@ test('apiKey from the environment takes precedence over the persisted config key
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
     const result = await runCli(
-      ['--output', 'text', 'text', 'chat', '--prompt', 'hi'],
+      ['--output', 'text', 'text', 'chat', '--message', 'hi'],
       { home, env: { STEPFUN_API_KEY: 'ENV_KEY' } }
     );
     assert.equal(result.status, 0, result.stderr);
@@ -874,7 +937,7 @@ test('text chat --dry-run prints the request URL and model and sends zero reques
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
     const result = await runCli(
-      ['--dry-run', '--output', 'json', 'text', 'chat', '--prompt', 'hi', '--model', 'step-3.5-flash'],
+      ['--dry-run', '--output', 'json', 'text', 'chat', '--message', 'hi', '--model', 'step-3.5-flash'],
       { home }
     );
     assert.equal(result.status, 0, result.stderr);
@@ -885,7 +948,7 @@ test('text chat --dry-run prints the request URL and model and sends zero reques
     assert.equal(summary.method, 'POST');
     assert.equal(summary.url, `${server.baseUrl}/chat/completions`);
     assert.equal(summary.model, 'step-3.5-flash');
-    assert.equal(summary.prompt, 'hi');
+    assert.deepEqual(summary.message, ['hi']);
     // No credential leakage.
     assert.equal(result.stdout.includes('DRYRUN_CHAT_KEY'), false);
   } finally {
@@ -906,7 +969,7 @@ test('text chat --dry-run does not require an API key', async () => {
         '--output', 'json',
         '--base-url', server.baseUrl,
         'text', 'chat',
-        '--prompt', 'hi'
+        '--message', 'hi'
       ],
       { env: { STEPFUN_API_KEY: '' } }
     );
@@ -915,7 +978,7 @@ test('text chat --dry-run does not require an API key', async () => {
 
     const summary = JSON.parse(result.stdout);
     assert.equal(summary.url, `${server.baseUrl}/chat/completions`);
-    assert.equal(summary.prompt, 'hi');
+    assert.deepEqual(summary.message, ['hi']);
   } finally {
     await server.close();
   }
@@ -1003,7 +1066,7 @@ test('config set default_text_model is used by text chat when --model is omitted
     assert.equal((await runCli(['config', 'set', 'default_text_model', 'step-3.7-flash'], { home })).status, 0);
 
     const result = await runCli(
-      ['--output', 'text', 'text', 'chat', '--prompt', 'hi'],
+      ['--output', 'text', 'text', 'chat', '--message', 'hi'],
       { home }
     );
     assert.equal(result.status, 0, result.stderr);
