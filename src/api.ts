@@ -10,6 +10,73 @@ interface AsrEvent {
   [key: string]: unknown;
 }
 
+export interface ChatStreamResult {
+  content: string;
+  reasoningContent: string;
+  toolCalls: Array<Record<string, any>>;
+  finishReason?: string;
+  usage?: Record<string, unknown>;
+}
+
+async function* parseSSE(response: Response): AsyncGenerator<string> {
+  const reader = response.body?.getReader();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let dataLines: string[] = [];
+
+  const consumeLine = (rawLine: string): string | undefined => {
+    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+    if (line === '') {
+      if (dataLines.length === 0) return undefined;
+      const data = dataLines.join('\n');
+      dataLines = [];
+      return data;
+    }
+    if (line.startsWith(':')) return undefined;
+    if (line === 'data') dataLines.push('');
+    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+    return undefined;
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        const data = consumeLine(line);
+        if (data !== undefined) yield data;
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer) {
+      const data = consumeLine(buffer);
+      if (data !== undefined) yield data;
+    }
+    if (dataLines.length > 0) yield dataLines.join('\n');
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+function contentText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (!Array.isArray(content)) return '';
+  return content.map(block => {
+    if (typeof block === 'string') return block;
+    if (!block || typeof block !== 'object') return '';
+    const item = block as Record<string, unknown>;
+    return item.type === 'text' && typeof item.text === 'string' ? item.text : '';
+  }).join('');
+}
+
+export function extractAssistantText(response: any): string {
+  return contentText(response?.choices?.[0]?.message?.content);
+}
+
 /**
  * Typed API error carrying the HTTP status so callers can classify exit codes
  * (401/403 → AUTH, other non-2xx → generic API error). Thrown in place of
@@ -82,8 +149,9 @@ export class StepFunClient {
     model: string,
     messages: any[],
     onDelta: (text: string) => void,
-    opts?: { temperature?: number; top_p?: number; max_tokens?: number }
-  ) {
+    opts?: { temperature?: number; top_p?: number; max_tokens?: number },
+    onReasoningDelta?: (text: string) => void
+  ): Promise<ChatStreamResult> {
     const body: Record<string, unknown> = { model, messages, stream: true };
     if (opts?.temperature !== undefined) body.temperature = opts.temperature;
     if (opts?.top_p !== undefined) body.top_p = opts.top_p;
@@ -100,36 +168,47 @@ export class StepFunClient {
       throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
     }
 
-    const stream = response.body;
-    if (!stream) throw new Error('API Error: streaming response has no body');
+    if (!response.body) throw new Error('API Error: streaming response has no body');
 
-    let buffer = '';
-    const decoder = new TextDecoder();
-    const reader = stream.getReader();
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      // Events are separated by a blank line. Process every complete event
-      // in the buffer; keep the trailing partial for the next chunk.
-      let sep: number;
-      while ((sep = buffer.indexOf('\n\n')) !== -1) {
-        const rawEvent = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
-        const dataLines = rawEvent
-          .split(/\r?\n/)
-          .filter(line => line.startsWith('data:'))
-          .map(line => line.slice(5).trim());
-        for (const data of dataLines) {
-          if (!data || data === '[DONE]') continue;
-          const parsed = JSON.parse(data);
-          if (parsed.error) throw new APIError(0, `API Error: ${parsed.error.message || JSON.stringify(parsed.error)}`);
-          const delta = parsed.choices?.[0]?.delta?.content;
-          if (typeof delta === 'string' && delta.length > 0) onDelta(delta);
+    const result: ChatStreamResult = { content: '', reasoningContent: '', toolCalls: [] };
+    for await (const data of parseSSE(response)) {
+      if (!data || data === '[DONE]') continue;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(data);
+      } catch (err: any) {
+        throw new APIError(0, `API Error: invalid SSE JSON: ${err.message}`);
+      }
+      if (parsed.error) throw new APIError(0, `API Error: ${parsed.error.message || JSON.stringify(parsed.error)}`);
+
+      const choice = parsed.choices?.[0];
+      const delta = choice?.delta || {};
+      const text = contentText(delta.content);
+      if (text) {
+        result.content += text;
+        onDelta(text);
+      }
+      const reasoning = typeof delta.reasoning_content === 'string'
+        ? delta.reasoning_content
+        : typeof delta.reasoning === 'string' ? delta.reasoning : '';
+      if (reasoning) {
+        result.reasoningContent += reasoning;
+        onReasoningDelta?.(reasoning);
+      }
+      if (Array.isArray(delta.tool_calls)) {
+        for (const part of delta.tool_calls) {
+          const index = Number(part.index ?? 0);
+          const target = result.toolCalls[index] ||= { function: { name: '', arguments: '' } };
+          if (part.id) target.id = part.id;
+          if (part.type) target.type = part.type;
+          if (part.function?.name) target.function.name += part.function.name;
+          if (part.function?.arguments) target.function.arguments += part.function.arguments;
         }
       }
+      if (choice?.finish_reason) result.finishReason = choice.finish_reason;
+      if (parsed.usage && typeof parsed.usage === 'object') result.usage = parsed.usage;
     }
-    buffer += decoder.decode();
+    return result;
   }
 
   async audioSynthesize(

@@ -99,7 +99,7 @@ flag > environment > config > default
 
 ```text
 stepfun
-  update [--check] [--registry <url>]
+  update
   auth login
   auth logout [--yes]
   auth status
