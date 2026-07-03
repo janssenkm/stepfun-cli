@@ -1,3 +1,4 @@
+/** NPM package users should update when running the standard distribution. */
 export const PACKAGE_NAME = '@stepfun-ai/cli';
 
 /** `pkg` marks packaged processes with process.pkg. */
@@ -5,6 +6,7 @@ export function isStandaloneBinary(): boolean {
   return Boolean((process as NodeJS.Process & { pkg?: unknown }).pkg);
 }
 
+/** Dependencies used to render update guidance without side effects. */
 export interface UpdateOptions {
   currentVersion: string;
   standalone?: boolean;

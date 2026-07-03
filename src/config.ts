@@ -2,6 +2,7 @@ import os from 'os';
 import path from 'path';
 import fs from 'fs';
 
+/** Persisted user configuration stored in ~/.stepfun-cli/config.json. */
 export interface Config {
   apiKey?: string;
   baseUrl?: string;
@@ -15,9 +16,13 @@ export interface Config {
 const configDir = path.join(os.homedir(), '.stepfun-cli');
 const configFile = path.join(configDir, 'config.json');
 
+/** Geography controls endpoint domains and geography-specific defaults. */
 export type Geography = 'CN' | 'Global';
+
+/** Billing distinguishes subscription endpoints from pay-as-you-go endpoints. */
 export type Billing = 'PayGo' | 'StepPlan';
 
+/** Complete metadata required to resolve and validate a named Region. */
 export interface RegionProfile {
   region: string;
   baseUrl: string;
@@ -26,6 +31,7 @@ export interface RegionProfile {
   supportsNonChat: boolean;
 }
 
+/** Canonical Region-to-endpoint contract used throughout the CLI. */
 export const REGION_PROFILES: Record<string, RegionProfile> = {
   'StepPlan-CN':     { region: 'StepPlan-CN',     baseUrl: 'https://api.stepfun.com/step_plan/v1', geography: 'CN',     billing: 'StepPlan', supportsNonChat: false },
   'StepPlan-Global': { region: 'StepPlan-Global', baseUrl: 'https://api.stepfun.ai/step_plan/v1',   geography: 'Global', billing: 'StepPlan', supportsNonChat: false },

@@ -1,18 +1,18 @@
 # StepFun-CLI Design
 
-## 架构
+## Architecture
 
-项目使用 Node.js 18+ + TypeScript 实现：
+The project uses Node.js 18 or later and TypeScript:
 
-- `src/index.ts`：Commander 命令树、参数解析、配置解析、错误分类、输出格式化。
-- `src/config.ts`：Region 映射和 `~/.stepfun-cli/config.json` 读写。
-- `src/api.ts`：StepFun HTTP 客户端，封装 chat、TTS、ASR、image edit；HTTP 与 multipart 使用 Node 18 内置 `fetch`、`FormData`、`Blob`。
-- `src/update.ts`：输出 NPM 更新指令；不联网检查或自动修改全局安装。
-- `test/*.test.js`：CLI 契约、端到端模拟服务、认证边界和更新逻辑测试。
+- `src/index.ts`: Commander command tree, option validation, configuration resolution, output, and error classification.
+- `src/config.ts`: Region profiles and `~/.stepfun-cli/config.json` persistence.
+- `src/api.ts`: HTTP client for chat, TTS, ASR, and image editing using native `fetch`, `FormData`, and `Blob`.
+- `src/update.ts`: safe NPM update instructions without registry access or installation changes.
+- `test/*.test.js`: contract, integration, authentication, streaming, and update tests.
 
-发布模式为 NPM-first。编译由 TypeScript 编译器输出 CJS 到 `dist/`，`package.json#bin.stepfun` 指向 `dist/index.js`，NPM 包只发布 `dist/`。`pkg` 仅通过 `npx pkg@5.8.1` 按需下载，用于生成可选 Release artifacts，不是默认安装路径；独立二进制统一写入 `bin/{os}/x64/stepfun(.exe)`，且不进入 NPM 包。
+TypeScript emits CommonJS into `dist/`. `package.json#bin.stepfun` points to `dist/index.js`. The package publishes compiled output together with the English and Chinese README files. Optional binaries are produced through an on-demand `pkg@5.8.1` invocation and written under `bin/{os}/x64/`.
 
-## 命令树
+## Command tree
 
 ```text
 stepfun
@@ -29,88 +29,89 @@ stepfun
   image edit
 ```
 
-未纳入当前范围的能力不暴露占位命令，避免用户误以为 StepFun-CLI 当前支持视频、音乐或 Agent 工作流。
+Unsupported capabilities do not receive placeholder commands.
 
-## 配置解析
+## Configuration resolution
 
-运行时统一采用：
+Every runtime setting follows:
 
 ```text
 flag > environment > config > default
 ```
 
-环境变量包括：
+Supported environment variables are `STEPFUN_API_KEY`, `STEPFUN_REGION`, `STEPFUN_BASE_URL`, `STEPFUN_OUTPUT`, and `STEPFUN_TIMEOUT`. Region identifiers must exist in `REGION_PROFILES`. A custom Base URL overrides the Region URL, while the Region still controls geography-dependent defaults and warnings.
 
-- `STEPFUN_API_KEY`
-- `STEPFUN_REGION`
-- `STEPFUN_BASE_URL`
-- `STEPFUN_OUTPUT`
-- `STEPFUN_TIMEOUT`
+## HTTP client
 
-`region` 必须命中 `REGION_PROFILES`。`baseUrl` 可被 `--base-url` 或 `STEPFUN_BASE_URL` 覆盖，此时调用方自行承担套餐/地区匹配责任。
-
-## HTTP 设计
-
-所有请求携带：
+Every model API request carries:
 
 - `Authorization: Bearer <apiKey>`
-- `User-Agent: stepfun-cli/<version>` 实际由 `src/version.ts` 生成
+- `User-Agent: stepfun-cli/<version>`
 
-端点：
-
-| 能力 | 方法 | Path |
+| Capability | Method | Path |
 | --- | --- | --- |
 | Chat | POST | `/chat/completions` |
-| Chat Stream | POST | `/chat/completions` with `stream: true` |
+| Streaming chat | POST | `/chat/completions` with `stream: true` |
 | TTS | POST | `/audio/speech` |
 | ASR | POST | `/audio/asr/sse` |
-| Image Edit | POST | `/images/edits` |
+| Image editing | POST | `/images/edits` |
 
-Chat、TTS、ASR 使用 JSON 请求；Image Edit 使用 multipart/form-data，并由原生 `FormData` 生成 boundary。
+Chat, TTS, and ASR use JSON. Image editing uses native multipart/form-data.
 
-## 输出策略
+## Streaming chat
 
-- 成功结果默认在 TTY 输出文本，在非 TTY 输出 JSON。
-- `--output text|json` 可显式覆盖。
-- 错误总是输出到 stderr。
-- JSON 错误信封稳定为 `{ error: { code, message, hint? } }`。
-- `--quiet` 只隐藏进度提示，不隐藏结果和错误。
-- 流式 chat 使用增量 SSE 解析器，支持 CRLF、多行 data、注释和跨 chunk 缓冲。
-- 流式正文写入 stdout；推理仅产生 stderr 状态提示，`--quiet` 下关闭，不输出原始推理内容。
-- 流式解析器累积正文、推理、工具调用、结束原因和 usage；非流式 JSON 保留原始 API 响应。
+The SSE parser incrementally buffers decoded bytes and supports LF/CRLF lines, comments, multi-line `data` fields, cross-chunk events, and a final event without a blank-line terminator.
 
-## Dry Run
+The stream accumulator retains:
 
-`--dry-run` 是请求检查工具，设计约束：
+- response text;
+- reasoning content;
+- incremental tool calls;
+- finish reason;
+- usage.
 
-- 不要求 API Key。
-- 不创建 API client。
-- 不发起网络请求。
-- 输出完整 URL、HTTP 方法、命令名、模型和关键参数。
-- 文件只输出 path/size 或 path/error，不读取或打印二进制内容。
-- 仍执行参数合法性校验，例如数值参数、Region、`text chat` 的 message/prompt/messages-file 要求。
+Text is written to stdout. Reasoning only triggers status messages on stderr; raw reasoning is not displayed. `--quiet` suppresses status messages. JSON output uses a non-streaming request and preserves the complete server response.
 
-## 错误分类
+## Output
 
-`src/index.ts` 中的 `classifyError` 负责将异常映射为退出码：
+- Successful TTY output defaults to text; non-TTY output defaults to JSON.
+- `--output text|json` overrides detection.
+- Errors always go to stderr.
+- JSON errors use `{ error: { code, message, hint? } }`.
+- `--quiet` suppresses progress/status output, not results or errors.
 
-- `UsageError` -> 2
-- 缺少 API Key 或 401/403 -> 3
-- fetch/Abort/网络类错误 -> 6
-- 其他 APIError -> 1
-- 未分类错误 -> 1
+## Dry run
 
-该设计让脚本可以只看退出码，也可以在 JSON 模式下解析错误类型。
+Dry run:
 
-## 安全边界
+- does not require an API key;
+- does not instantiate the HTTP client;
+- does not send network requests;
+- emits method, complete URL, command, model, and key parameters;
+- represents files as path/size or path/error;
+- still validates options, Regions, and chat message requirements.
 
-- API Key 只在 `Authorization` 头中发送。
-- `auth status` 和 `config show` 掩码显示 API Key。
-- dry-run 不输出 API Key。
-- 配置文件为明文 JSON，README 明确建议限制文件权限并在 CI 使用环境变量。
+## Error classification
 
-## 测试策略
+`classifyError` maps:
 
-- 契约测试保护 Region URL、凭据优先级、输出格式、错误码、dry-run。
-- 端到端测试使用本地 HTTP 服务断言请求 path、headers、body 和输出解析。
-- 更新测试断言提示命令，不访问真实 NPM 或修改全局安装。
+- `UsageError` to exit 2;
+- missing credentials and HTTP 401/403 to exit 3;
+- fetch, abort, timeout, and connection failures to exit 6;
+- other API and unclassified errors to exit 1.
+
+This supports both numeric shell checks and structured JSON processing.
+
+## Security
+
+- API keys are sent only through the Authorization header.
+- `auth status` and `config show` mask keys.
+- Dry run never prints credentials or binary file contents.
+- The plaintext configuration format and recommended filesystem permissions are documented.
+
+## Testing
+
+- Contract tests protect Region URLs, precedence, output formats, exit codes, and dry run.
+- Integration tests use local HTTP servers to validate paths, headers, bodies, and response parsing.
+- Streaming tests cover reasoning suppression, tool-call accumulation, CRLF, and SSE parsing.
+- Update tests validate instructions without accessing NPM or changing global installation state.
