@@ -1,137 +1,203 @@
-# StepFun-CLI 设计与实现方案
+# StepFun-CLI 仓库工作规范
 
 ## 1. 项目定位
-本项目名为 `StepFun-CLI`，发布至 NPM 的包名为 `@stepfun-ai/cli`，命令行全局命令为 `stepfun`。编译出的独立二进制文件名为 `stepfun.exe` (Windows)、`stepfun-linux`、`stepfun-macos`。
-该工具对标 MiniMax (`mmx`) 的 CLI 交互体验，主要用于在终端调用阶跃星辰（StepFun）的各项模型能力。
+
+本项目名为 `StepFun-CLI`，NPM 包名为 `@stepfun-ai/cli`，全局命令为 `stepfun`。工具用于在终端调用阶跃星辰（StepFun）的模型能力。
+
+发布模式为 NPM-first：
+
+- NPM 包运行入口：`dist/index.js`
+- `package.json#bin.stepfun`：`dist/index.js`
+- 运行环境：Node.js 18 或更高版本
+- 可选独立二进制仅作为 Release artifacts，不作为默认安装路径
+
+可选独立二进制产物路径固定为：
+
+```text
+bin/
+  linux/x64/stepfun
+  macos/x64/stepfun
+  windows/x64/stepfun.exe
+```
 
 ## 2. 核心架构与技术栈
-- **语言**：Node.js + TypeScript
-- **CLI 框架**：`commander` (处理参数解析与命令分发)
-- **交互组件**：`prompts` (用于提供流畅的终端方向键选择和密码输入交互)
-- **网络请求**：`node-fetch`
-- **打包工具**：`tsup` (编译 TS -> CJS), `pkg` (打包全平台独立可执行文件)
+
+- **语言**：Node.js 18+ + TypeScript
+- **CLI 框架**：`commander`
+- **交互组件**：`prompts`
+- **网络请求**：Node.js 18 内置 `fetch`
+- **multipart**：Node.js 18 内置 `FormData` / `Blob`
+- **构建**：`tsc` 输出 CommonJS 到 `dist/`
+- **可选二进制打包**：`npm run pkg` 通过 `npx pkg@5.8.1` 按需下载打包工具
+
+不得重新引入 `node-fetch`、`form-data`、`dotenv`、`tsup` 或本地 `pkg` devDependency，除非有明确需求并同步更新本文档、README、PRD 和设计文档。
 
 ## 3. 支持的模型能力
-命令行内部已封装以下模型调用，未来若新增模型请遵循该结构：
-- **文本生成 (Text/Chat)**：`step-3.5-flash`, `step-3.5-flash-2603`, `step-3.7-flash`
+
+当前内置模型列表：
+
+- **文本生成 (Text/Chat)**：`step-3.5-flash`、`step-3.5-flash-2603`、`step-3.7-flash`
 - **语音合成 (Speech/TTS)**：`stepaudio-2.5-tts`
 - **语音识别 (Speech/ASR)**：`stepaudio-2.5-asr`
 - **图像编辑 (Image/Edit)**：`step-image-edit-2`
 
-## 4. API 区域 (Region) 设计规范
-为适配 StepFun 的不同计费和网络隔离场景，制定了 4 组特定的 Region 标识符。
-任何智能体在处理本仓库 API URL 时，必须严格遵循以下映射，不允许混用：
+新增模型能力时，应同步更新：
 
-1. **StepPlan-CN**
-   - 描述：国内版 StepPlan 套餐专用
-   - URL: `https://api.stepfun.com/step_plan/v1`
-2. **StepPlan-Global**
-   - 描述：国际版 StepPlan 套餐专用
-   - URL: `https://api.stepfun.ai/step_plan/v1`
-3. **PayGo-CN**
-   - 描述：国内版纯 API 按量计费（标准版）
-   - URL: `https://api.stepfun.com/v1`
-4. **PayGo-Global**
-   - 描述：国际版纯 API 按量计费（标准版）
-   - URL: `https://api.stepfun.ai/v1`
+- `src/index.ts` 中的模型列表和命令参数
+- `src/api.ts` 中的 API 封装
+- `README.md`
+- `docs/PRD.md`
+- `docs/DESIGN.md`
+- 相关测试
 
-## 5. 鉴权与交互逻辑 (参考 mmx)
-- **登录指令**：`stepfun auth login`
-- **状态查询**：`stepfun auth status`
-- **交互流程**：
-  1. 使用 `prompts` 组件在终端弹出上述 4 个 Region 的选项菜单。
-  2. 用户通过方向键选择后，再弹出隐藏输入的框让用户输入对应 Region 的 API Key。
-- **持久化存储**：
-  - 工具将用户选择的 `region` 和 `apiKey` 以 JSON 格式保存在 `~/.stepfun-cli/config.json` 中。
-  - 读取时，优先使用单次命令传入的 `--api-key` 和 `--region`，若未传参则读取 `config.json`。
+## 4. API Region 映射
 
-## 6. 使用说明与参数结构 (兼容 mmx 设计)
-- **全局参数**：`--api-key`, `--region`, `--base-url`, `--output`, `--quiet`, `--verbose`, `--no-color`
-- **认证状态**：`stepfun auth status`
-- **模型列表**：`stepfun models list`
-- **文本对话**：`stepfun text chat --prompt <text> --model <model>`
-- **语音合成**：`stepfun speech synthesize --text <text> --output <file> --model <model>`
-- **语音识别**：`stepfun speech recognize --file <audio-file> --model <model>`
-- **图像编辑**：`stepfun image edit --file <image-file> --prompt <text> --model <model>`
+任何修改 API URL、Region、Base URL 解析逻辑时，必须严格遵循以下映射，不允许混用套餐、地区和计费模式：
 
-*(注：本文件为当前 Workspace 的核心行为规范与设计架构总览，智能体后续对此仓库进行修改和功能扩展时，需严格参考本文件中的 Region 映射、持久化存储方案以及交互设计。)*
+| Region | 描述 | Base URL |
+| --- | --- | --- |
+| `StepPlan-CN` | 国内版 StepPlan 套餐专用 | `https://api.stepfun.com/step_plan/v1` |
+| `StepPlan-Global` | 国际版 StepPlan 套餐专用 | `https://api.stepfun.ai/step_plan/v1` |
+| `PayGo-CN` | 国内版纯 API 按量计费 | `https://api.stepfun.com/v1` |
+| `PayGo-Global` | 国际版纯 API 按量计费 | `https://api.stepfun.ai/v1` |
 
----
+默认 Region 为 `PayGo-CN`。StepPlan Region 官方仅承诺覆盖 chat / reasoning 端点；语音和图像命令在 StepPlan Region 下执行时应给出风险提示，`--quiet` 下不提示。
 
-## 附录：原 README 内容 (使用说明)
+## 5. 配置与鉴权
 
-# StepFun CLI
+配置文件固定为：
 
-A command-line interface for [StepFun](https://stepfun.com) AI models, compatible with Windows, Linux, and MacOS. The CLI interface is designed similarly to the `mmx` (MiniMax-AI) CLI.
-
-## Models Supported
-- Text: `step-3.5-flash`, `step-3.5-flash-2603`, `step-3.7-flash`
-- Speech: `stepaudio-2.5-tts`, `stepaudio-2.5-asr`
-- Image: `step-image-edit-2`
-
-## Installation
-
-### From NPM
-```bash
-npm install -g @stepfun-ai/cli
+```text
+~/.stepfun-cli/config.json
 ```
 
-### Standalone Binary
-Pre-compiled binaries for Windows (`.exe`), Linux, and macOS are available in the `bin/` directory or releases page.
+配置读取优先级固定为：
 
-## Configuration
-
-Interactive login:
-```bash
-stepfun auth login
+```text
+flag > environment > config > default
 ```
 
-Check authentication status:
-```bash
-stepfun auth status
+支持的环境变量：
+
+- `STEPFUN_API_KEY`
+- `STEPFUN_REGION`
+- `STEPFUN_BASE_URL`
+- `STEPFUN_OUTPUT`
+- `STEPFUN_TIMEOUT`
+
+认证命令：
+
+- `stepfun auth login`：交互选择四个 Region 之一，再隐藏输入 API Key
+- `stepfun auth status`：输出认证状态、认证来源、掩码后的 API Key、Region、Base URL
+- `stepfun auth logout [--yes]`：清除本地凭据与配置
+
+`auth status` 和 `config show` 必须掩码显示 API Key。dry-run、错误输出、调试输出不得泄露 API Key 或文件二进制内容。
+
+## 6. 命令与参数边界
+
+当前命令树：
+
+```text
+stepfun
+  update [--check] [--registry <url>]
+  auth login
+  auth logout [--yes]
+  auth status
+  config set <key> <value>
+  config show
+  models list
+  text chat
+  speech synthesize
+  speech recognize
+  image edit
 ```
 
-Set your API Key manually:
-```bash
-stepfun config set api_key "YOUR_API_KEY"
+全局参数：
+
+- `--api-key <key>`
+- `--region <region>`
+- `--base-url <url>`
+- `--output <text|json>`
+- `--timeout <seconds>`
+- `--dry-run`
+- `--non-interactive`
+- `--quiet`
+- `--verbose`
+- `--no-color`
+
+`--dry-run` 必须满足：
+
+- 不要求 API Key
+- 不创建 API client
+- 不发起网络请求
+- 输出请求摘要
+- 文件只显示 path/size 或 path/error
+
+## 7. 输出与错误处理
+
+默认输出策略：
+
+- stdout 是 TTY 时默认 `text`
+- stdout 不是 TTY 时默认 `json`
+- `--output`、`STEPFUN_OUTPUT` 和配置文件可覆盖
+
+错误固定输出到 stderr。JSON 错误信封格式：
+
+```json
+{
+  "error": {
+    "code": "AUTH",
+    "message": "...",
+    "hint": "..."
+  }
+}
 ```
 
-List supported models:
-```bash
-stepfun models list
-```
+退出码：
 
-## Usage
+| 退出码 | 类型 | 场景 |
+| --- | --- | --- |
+| `0` | OK | 成功 |
+| `1` | API_ERROR | 非鉴权类 API 错误 |
+| `2` | USAGE | 参数非法、未知配置键、非交互命令需要确认 |
+| `3` | AUTH | 缺少 API Key、401、403 |
+| `6` | NETWORK | 网络失败、DNS、连接拒绝、超时 |
 
-### Text (Chat)
-```bash
-stepfun text chat --prompt "Hello, who are you?" --model step-3.5-flash
-```
+## 8. 开发与发布
 
-### Speech (Synthesize TTS)
-```bash
-stepfun speech synthesize --text "你好，我是阶跃星辰的大模型。" --output hello.wav --model stepaudio-2.5-tts
-```
+常用命令：
 
-### Speech (Recognize ASR)
-```bash
-stepfun speech recognize --file hello.wav --model stepaudio-2.5-asr
-```
-
-### Image (Edit)
-```bash
-stepfun image edit --file input.png --prompt "Make it cyberpunk style" --model step-image-edit-2
-```
-
-## Development
-
-Build the project:
 ```bash
 npm install
 npm run build
+npm test
+npm pack --dry-run
 ```
 
-Compile standalone binaries (Windows, MacOS, Linux):
+构建输出：
+
+```text
+dist/
+  api.js
+  config.js
+  index.js
+  update.js
+  version.js
+```
+
+可选二进制打包：
+
 ```bash
 npm run pkg
 ```
+
+该命令会按需下载 `pkg@5.8.1`，生成 `bin/{os}/x64/stepfun(.exe)`。`bin/` 不进入 NPM 包。
+
+## 9. 文档职责
+
+- `README.md`：用户安装、配置、命令、开发与发布说明
+- `docs/PRD.md`：产品范围、功能需求、验收标准
+- `docs/DESIGN.md`：架构、命令树、配置解析、HTTP、输出、错误、安全和测试策略
+- `AGENTS.md`：智能体修改本仓库时必须遵守的核心行为规范
+
+不要在 `AGENTS.md` 附带 README 的完整副本。README 内容更新时，应只在必要时同步本文件中的硬性约束。

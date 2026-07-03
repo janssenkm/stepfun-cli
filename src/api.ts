@@ -1,13 +1,43 @@
-import fetch from 'node-fetch';
 import { USER_AGENT } from './version';
+import fs from 'fs';
+import path from 'path';
+
+interface AsrEvent {
+  type?: string;
+  delta?: string;
+  text?: string;
+  message?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Typed API error carrying the HTTP status so callers can classify exit codes
+ * (401/403 → AUTH, other non-2xx → generic API error). Thrown in place of
+ * plain Error by every API method after a non-ok response.
+ */
+export class APIError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+    this.name = 'APIError';
+  }
+}
+
+export interface TranscriptionResult {
+  text: string;
+  event: AsrEvent;
+}
 
 export class StepFunClient {
   private apiKey: string;
   private baseUrl: string;
+  private timeoutMs: number;
 
-  constructor(apiKey: string, baseUrl: string = 'https://api.stepfun.com/v1') {
+  constructor(apiKey: string, baseUrl: string = 'https://api.stepfun.com/v1', timeoutSeconds?: number) {
     this.apiKey = apiKey;
     this.baseUrl = baseUrl;
+    this.timeoutMs = (timeoutSeconds ?? 300) * 1000;
   }
 
   private authHeaders() {
@@ -24,87 +54,194 @@ export class StepFunClient {
     };
   }
 
-  async chatCompletion(model: string, messages: any[]) {
+  async chatCompletion(
+    model: string,
+    messages: any[],
+    opts?: { temperature?: number; top_p?: number; max_tokens?: number }
+  ) {
+    const body: Record<string, unknown> = { model, messages };
+    if (opts?.temperature !== undefined) body.temperature = opts.temperature;
+    if (opts?.top_p !== undefined) body.top_p = opts.top_p;
+    if (opts?.max_tokens !== undefined) body.max_tokens = opts.max_tokens;
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: this.jsonHeaders(),
-      body: JSON.stringify({
-        model,
-        messages
-      })
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(this.timeoutMs)
     });
-    
+
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`API Error (${response.status}): ${errorText}`);
+      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
     }
-    
+
     return await response.json();
   }
 
-  async audioSynthesize(model: string, input: string, voice: string = 'cixingnan') {
+  async chatCompletionStream(
+    model: string,
+    messages: any[],
+    onDelta: (text: string) => void,
+    opts?: { temperature?: number; top_p?: number; max_tokens?: number }
+  ) {
+    const body: Record<string, unknown> = { model, messages, stream: true };
+    if (opts?.temperature !== undefined) body.temperature = opts.temperature;
+    if (opts?.top_p !== undefined) body.top_p = opts.top_p;
+    if (opts?.max_tokens !== undefined) body.max_tokens = opts.max_tokens;
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: { ...this.jsonHeaders(), Accept: 'text/event-stream' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(this.timeoutMs)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
+    }
+
+    const stream = response.body;
+    if (!stream) throw new Error('API Error: streaming response has no body');
+
+    let buffer = '';
+    const decoder = new TextDecoder();
+    const reader = stream.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      // Events are separated by a blank line. Process every complete event
+      // in the buffer; keep the trailing partial for the next chunk.
+      let sep: number;
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {
+        const rawEvent = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        const dataLines = rawEvent
+          .split(/\r?\n/)
+          .filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trim());
+        for (const data of dataLines) {
+          if (!data || data === '[DONE]') continue;
+          const parsed = JSON.parse(data);
+          if (parsed.error) throw new APIError(0, `API Error: ${parsed.error.message || JSON.stringify(parsed.error)}`);
+          const delta = parsed.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string' && delta.length > 0) onDelta(delta);
+        }
+      }
+    }
+    buffer += decoder.decode();
+  }
+
+  async audioSynthesize(
+    model: string,
+    input: string,
+    voice: string = 'cixingnansheng',
+    opts?: { response_format?: string; speed?: number; volume?: number; sample_rate?: number }
+  ) {
+    const body: Record<string, unknown> = { model, input, voice };
+    if (opts?.response_format !== undefined) body.response_format = opts.response_format;
+    if (opts?.speed !== undefined) body.speed = opts.speed;
+    if (opts?.volume !== undefined) body.volume = opts.volume;
+    if (opts?.sample_rate !== undefined) body.sample_rate = opts.sample_rate;
     const response = await fetch(`${this.baseUrl}/audio/speech`, {
       method: 'POST',
       headers: this.jsonHeaders(),
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(this.timeoutMs)
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
+    }
+
+    return Buffer.from(await response.arrayBuffer());
+  }
+
+  async audioTranscribe(
+    model: string,
+    filePath: string,
+    opts?: { language?: string; hotwords?: string[] }
+  ) {
+    const format = path.extname(filePath).slice(1).toLowerCase();
+    if (!['ogg', 'mp3', 'wav', 'pcm'].includes(format)) {
+      throw new Error('Unsupported audio format. Expected one of: ogg, mp3, wav, pcm');
+    }
+
+    const formatOptions: Record<string, string | number> = { type: format };
+    if (format === 'pcm') {
+      // Raw PCM has no container metadata, so the documented defaults must be explicit.
+      Object.assign(formatOptions, { codec: 'pcm_s16le', rate: 16000, bits: 16, channel: 1 });
+    }
+
+    const transcription: Record<string, unknown> = { model, enable_itn: true };
+    if (opts?.language !== undefined) transcription.language = opts.language;
+    if (opts?.hotwords !== undefined) transcription.hotwords = opts.hotwords;
+
+    const response = await fetch(`${this.baseUrl}/audio/asr/sse`, {
+      method: 'POST',
+      headers: { ...this.jsonHeaders(), Accept: 'text/event-stream' },
+      signal: AbortSignal.timeout(this.timeoutMs),
       body: JSON.stringify({
-        model,
-        input,
-        voice
+        audio: {
+          data: fs.readFileSync(filePath).toString('base64'),
+          input: {
+            transcription,
+            format: formatOptions
+          }
+        }
       })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`API Error (${response.status}): ${errorText}`);
+      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
     }
 
-    return await response.buffer();
+    const stream = await response.text();
+    const events = stream
+      .split(/\r?\n/)
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.slice(5).trim())
+      .filter(data => data && data !== '[DONE]')
+      .map(data => JSON.parse(data) as AsrEvent);
+    const errorEvent = events.find(event => event.type === 'error');
+    if (errorEvent) throw new APIError(0, `API Error: ${errorEvent.message || 'ASR failed'}`);
+    const done = [...events].reverse().find(event => event.type === 'transcript.text.done');
+    const text = typeof done?.text === 'string'
+      ? done.text
+      : events.map(event => event.delta || '').join('');
+    if (!done && !text) throw new Error('API Error: ASR stream did not contain a transcription result');
+    return { text, event: done || events[events.length - 1] } as TranscriptionResult;
   }
 
-  async audioTranscribe(model: string, filePath: string) {
-    const FormData = require('form-data');
-    const fs = require('fs');
+  async imageEdit(
+    model: string,
+    imagePath: string,
+    prompt: string,
+    responseFormat: string = 'b64_json',
+    opts?: { seed?: number; steps?: number; cfg_scale?: number; negative_prompt?: string }
+  ) {
     const form = new FormData();
-    form.append('file', fs.createReadStream(filePath));
-    form.append('model', model);
-
-    const response = await fetch(`${this.baseUrl}/audio/transcriptions`, {
-      method: 'POST',
-      headers: {
-        ...this.authHeaders(),
-        ...form.getHeaders()
-      },
-      body: form
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`API Error (${response.status}): ${errorText}`);
-    }
-
-    return await response.json();
-  }
-
-  async imageEdit(model: string, imagePath: string, prompt: string) {
-    const FormData = require('form-data');
-    const fs = require('fs');
-    const form = new FormData();
-    form.append('image', fs.createReadStream(imagePath));
+    form.append('image', new Blob([fs.readFileSync(imagePath)]), path.basename(imagePath));
     form.append('prompt', prompt);
     form.append('model', model);
+    form.append('response_format', responseFormat);
+    if (opts?.seed !== undefined) form.append('seed', String(opts.seed));
+    if (opts?.steps !== undefined) form.append('steps', String(opts.steps));
+    if (opts?.cfg_scale !== undefined) form.append('cfg_scale', String(opts.cfg_scale));
+    if (opts?.negative_prompt !== undefined) form.append('negative_prompt', opts.negative_prompt);
 
     const response = await fetch(`${this.baseUrl}/images/edits`, {
       method: 'POST',
-      headers: {
-        ...this.authHeaders(),
-        ...form.getHeaders()
-      },
-      body: form
+      headers: this.authHeaders(),
+      body: form,
+      signal: AbortSignal.timeout(this.timeoutMs)
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(`API Error (${response.status}): ${errorText}`);
+      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
     }
 
     return await response.json();
