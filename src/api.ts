@@ -1,6 +1,10 @@
-import { USER_AGENT } from './version';
 import fs from 'fs';
 import path from 'path';
+import { ENDPOINTS } from './client/endpoints';
+import { APIError, HttpClient } from './client/http';
+import { parseSSE } from './client/sse';
+
+export { APIError } from './client/http';
 
 interface AsrEvent {
   type?: string;
@@ -17,54 +21,6 @@ export interface ChatStreamResult {
   toolCalls: Array<Record<string, any>>;
   finishReason?: string;
   usage?: Record<string, unknown>;
-}
-
-/**
- * Incrementally parses SSE data fields without assuming network chunks align
- * with lines or event boundaries. Comment, event, and id fields are ignored.
- */
-async function* parseSSE(response: Response): AsyncGenerator<string> {
-  const reader = response.body?.getReader();
-  if (!reader) return;
-  const decoder = new TextDecoder();
-  let buffer = '';
-  let dataLines: string[] = [];
-
-  const consumeLine = (rawLine: string): string | undefined => {
-    const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
-    if (line === '') {
-      if (dataLines.length === 0) return undefined;
-      const data = dataLines.join('\n');
-      dataLines = [];
-      return data;
-    }
-    if (line.startsWith(':')) return undefined;
-    if (line === 'data') dataLines.push('');
-    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
-    return undefined;
-  };
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
-      for (const line of lines) {
-        const data = consumeLine(line);
-        if (data !== undefined) yield data;
-      }
-    }
-    buffer += decoder.decode();
-    if (buffer) {
-      const data = consumeLine(buffer);
-      if (data !== undefined) yield data;
-    }
-    if (dataLines.length > 0) yield dataLines.join('\n');
-  } finally {
-    reader.releaseLock();
-  }
 }
 
 /** Extracts visible text from string or content-block response variants. */
@@ -84,73 +40,45 @@ export function extractAssistantText(response: any): string {
   return contentText(response?.choices?.[0]?.message?.content);
 }
 
-/**
- * Typed API error carrying the HTTP status so callers can classify exit codes
- * (401/403 → AUTH, other non-2xx → generic API error). Thrown in place of
- * plain Error by every API method after a non-ok response.
- */
-export class APIError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-    this.name = 'APIError';
-  }
-}
-
 export interface TranscriptionResult {
   text: string;
   event: AsrEvent;
 }
 
 export class StepFunClient {
-  private apiKey: string;
-  private baseUrl: string;
-  private timeoutMs: number;
+  private http: HttpClient;
 
-  constructor(apiKey: string, baseUrl: string = 'https://api.stepfun.com/v1', timeoutSeconds?: number) {
-    this.apiKey = apiKey;
-    this.baseUrl = baseUrl;
-    this.timeoutMs = (timeoutSeconds ?? 300) * 1000;
-  }
-
-  private authHeaders() {
-    return {
-      'User-Agent': USER_AGENT,
-      'Authorization': `Bearer ${this.apiKey}`
-    };
-  }
-
-  private jsonHeaders() {
-    return {
-      ...this.authHeaders(),
-      'Content-Type': 'application/json'
-    };
+  constructor(apiKey: string, baseUrl: string = 'https://api.stepfun.ai/step_plan/v1', timeoutSeconds?: number, verbose = false) {
+    this.http = new HttpClient(apiKey, baseUrl, (timeoutSeconds ?? 300) * 1000, verbose);
   }
 
   /** Sends a non-streaming chat completion request and returns the API payload. */
   async chatCompletion(
     model: string,
     messages: any[],
-    opts?: { temperature?: number; top_p?: number; max_tokens?: number }
+    opts?: {
+      temperature?: number; top_p?: number; max_tokens?: number;
+      reasoning_effort?: string; reasoning_format?: string;
+      stop?: string[]; frequency_penalty?: number;
+      response_format?: { type: string }; n?: number;
+    }
   ) {
     const body: Record<string, unknown> = { model, messages };
     if (opts?.temperature !== undefined) body.temperature = opts.temperature;
     if (opts?.top_p !== undefined) body.top_p = opts.top_p;
     if (opts?.max_tokens !== undefined) body.max_tokens = opts.max_tokens;
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+    if (opts?.reasoning_effort !== undefined) body.reasoning_effort = opts.reasoning_effort;
+    if (opts?.reasoning_format !== undefined) body.reasoning_format = opts.reasoning_format;
+    if (opts?.stop !== undefined && opts.stop.length > 0) body.stop = opts.stop.length === 1 ? opts.stop[0] : opts.stop;
+    if (opts?.frequency_penalty !== undefined) body.frequency_penalty = opts.frequency_penalty;
+    if (opts?.response_format !== undefined) body.response_format = opts.response_format;
+    if (opts?.n !== undefined) body.n = opts.n;
+    return await this.http.requestJson({
+      endpoint: ENDPOINTS.chatCompletions,
       method: 'POST',
-      headers: this.jsonHeaders(),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.timeoutMs)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
-    }
-
-    return await response.json();
   }
 
   /**
@@ -161,23 +89,38 @@ export class StepFunClient {
     model: string,
     messages: any[],
     onDelta: (text: string) => void,
-    opts?: { temperature?: number; top_p?: number; max_tokens?: number },
+    opts?: {
+      temperature?: number; top_p?: number; max_tokens?: number;
+      reasoning_effort?: string; reasoning_format?: string;
+      stop?: string[]; frequency_penalty?: number;
+      response_format?: { type: string }; n?: number;
+    },
     onReasoningDelta?: (text: string) => void
   ): Promise<ChatStreamResult> {
     const body: Record<string, unknown> = { model, messages, stream: true };
     if (opts?.temperature !== undefined) body.temperature = opts.temperature;
     if (opts?.top_p !== undefined) body.top_p = opts.top_p;
     if (opts?.max_tokens !== undefined) body.max_tokens = opts.max_tokens;
-    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+    if (opts?.reasoning_effort !== undefined) body.reasoning_effort = opts.reasoning_effort;
+    if (opts?.reasoning_format !== undefined) body.reasoning_format = opts.reasoning_format;
+    if (opts?.stop !== undefined && opts.stop.length > 0) body.stop = opts.stop.length === 1 ? opts.stop[0] : opts.stop;
+    if (opts?.frequency_penalty !== undefined) body.frequency_penalty = opts.frequency_penalty;
+    if (opts?.response_format !== undefined) body.response_format = opts.response_format;
+    if (opts?.n !== undefined) body.n = opts.n;
+    const response = await this.http.request({
+      endpoint: ENDPOINTS.chatCompletions,
       method: 'POST',
-      headers: { ...this.jsonHeaders(), Accept: 'text/event-stream' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.timeoutMs)
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(body)
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('text/event-stream')) {
+      throw new APIError(
+        0,
+        `Expected SSE stream (Content-Type: text/event-stream) but got "${contentType}". ` +
+        `The server may be experiencing issues or the endpoint returned an error page.`
+      );
     }
 
     if (!response.body) throw new Error('API Error: streaming response has no body');
@@ -235,19 +178,12 @@ export class StepFunClient {
     if (opts?.speed !== undefined) body.speed = opts.speed;
     if (opts?.volume !== undefined) body.volume = opts.volume;
     if (opts?.sample_rate !== undefined) body.sample_rate = opts.sample_rate;
-    const response = await fetch(`${this.baseUrl}/audio/speech`, {
+    return await this.http.requestBuffer({
+      endpoint: ENDPOINTS.audioSpeech,
       method: 'POST',
-      headers: this.jsonHeaders(),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(this.timeoutMs)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
-    }
-
-    return Buffer.from(await response.arrayBuffer());
   }
 
   /** Uploads supported audio as Base64 JSON and resolves the final SSE result. */
@@ -271,10 +207,10 @@ export class StepFunClient {
     if (opts?.language !== undefined) transcription.language = opts.language;
     if (opts?.hotwords !== undefined) transcription.hotwords = opts.hotwords;
 
-    const response = await fetch(`${this.baseUrl}/audio/asr/sse`, {
+    const response = await this.http.request({
+      endpoint: ENDPOINTS.audioTranscription,
       method: 'POST',
-      headers: { ...this.jsonHeaders(), Accept: 'text/event-stream' },
-      signal: AbortSignal.timeout(this.timeoutMs),
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
       body: JSON.stringify({
         audio: {
           data: fs.readFileSync(filePath).toString('base64'),
@@ -286,18 +222,15 @@ export class StepFunClient {
       })
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
+    const events: AsrEvent[] = [];
+    for await (const data of parseSSE(response)) {
+      if (!data || data === '[DONE]') continue;
+      try {
+        events.push(JSON.parse(data) as AsrEvent);
+      } catch (err: any) {
+        throw new APIError(0, `API Error: invalid SSE JSON: ${err.message}`);
+      }
     }
-
-    const stream = await response.text();
-    const events = stream
-      .split(/\r?\n/)
-      .filter(line => line.startsWith('data:'))
-      .map(line => line.slice(5).trim())
-      .filter(data => data && data !== '[DONE]')
-      .map(data => JSON.parse(data) as AsrEvent);
     const errorEvent = events.find(event => event.type === 'error');
     if (errorEvent) throw new APIError(0, `API Error: ${errorEvent.message || 'ASR failed'}`);
     const done = [...events].reverse().find(event => event.type === 'transcript.text.done');
@@ -326,18 +259,10 @@ export class StepFunClient {
     if (opts?.cfg_scale !== undefined) form.append('cfg_scale', String(opts.cfg_scale));
     if (opts?.negative_prompt !== undefined) form.append('negative_prompt', opts.negative_prompt);
 
-    const response = await fetch(`${this.baseUrl}/images/edits`, {
+    return await this.http.requestJson({
+      endpoint: ENDPOINTS.imageEdits,
       method: 'POST',
-      headers: this.authHeaders(),
-      body: form,
-      signal: AbortSignal.timeout(this.timeoutMs)
+      body: form
     });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new APIError(response.status, `API Error (${response.status}): ${errorText}`);
-    }
-
-    return await response.json();
   }
 }

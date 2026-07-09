@@ -138,14 +138,16 @@ test('speech synthesize writes API audio response to the requested output file',
     assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
 
     const result = await runCli([
-      '--quiet',
       'speech', 'synthesize',
       '--text', '你好，端到端测试',
       '--voice', 'testvoice',
-      '--output', outputFile
+      '--out', outputFile
     ], { home });
 
     assert.equal(result.status, 0);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /Synthesizing text to/);
+    assert.match(result.stderr, /Done\./);
     assert.equal(fs.readFileSync(outputFile, 'utf8'), 'FAKEAUDIO');
     assert.equal(server.requests.length, 1);
 
@@ -259,7 +261,7 @@ test('image edit sends auth, user agent, and multipart boundary headers', async 
   }
 });
 
-test('speech synthesize default voice is chosen by geography (PayGo-CN / PayGo-Global)', async () => {
+test('speech synthesize default voice is chosen by StepPlan geography', async () => {
   async function captureVoiceForRegion(region) {
     const server = await startMockServer(async (_req, res) => {
       res.writeHead(200, { 'content-type': 'audio/wav' });
@@ -276,7 +278,7 @@ test('speech synthesize default voice is chosen by geography (PayGo-CN / PayGo-G
         '--quiet',
         'speech', 'synthesize',
         '--text', 'hi',
-        '--output', outputFile
+        '--out', outputFile
       ], { home });
       assert.equal(result.status, 0, result.stderr);
       assert.equal(server.requests.length, 1);
@@ -286,8 +288,8 @@ test('speech synthesize default voice is chosen by geography (PayGo-CN / PayGo-G
     }
   }
 
-  assert.equal(await captureVoiceForRegion('PayGo-CN'), 'cixingnansheng');
-  assert.equal(await captureVoiceForRegion('PayGo-Global'), 'lively-girl');
+  assert.equal(await captureVoiceForRegion('CN'), 'cixingnansheng');
+  assert.equal(await captureVoiceForRegion('Global'), 'lively-girl');
 });
 
 test('StepPlan-CN speech synthesize warns on stderr and still sends the request', async () => {
@@ -307,7 +309,7 @@ test('StepPlan-CN speech synthesize warns on stderr and still sends the request'
       'speech', 'synthesize',
       '--text', '你好',
       '--voice', 'testvoice',
-      '--output', outputFile
+      '--out', outputFile
     ], { home });
 
     // Warns but does not block: request still goes out and exit code is 0.
@@ -339,7 +341,7 @@ test('StepPlan speech synthesize warning is suppressed by --quiet', async () => 
       'speech', 'synthesize',
       '--text', '你好',
       '--voice', 'testvoice',
-      '--output', outputFile
+      '--out', outputFile
     ], { home });
 
     assert.equal(result.status, 0, result.stderr);
@@ -488,7 +490,7 @@ test('text chat --messages-file - reads a messages array from stdin and --messag
   }
 });
 
-test('text chat --message is repeatable with role prefixes and --prompt remains an alias', async () => {
+test('text chat --message is a repeatable array option with role prefixes', async () => {
   const server = await startMockServer(async (_req, res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
@@ -513,14 +515,15 @@ test('text chat --message is repeatable with role prefixes and --prompt remains 
       { role: 'user', content: 'continue' }
     ]);
 
-    const promptResult = await runCli(['text', 'chat', '--prompt', 'legacy'], { home });
-    assert.equal(promptResult.status, 0, promptResult.stderr);
-    assert.deepEqual(JSON.parse(server.requests.at(-1).body).messages, [
-      { role: 'user', content: 'legacy' }
-    ]);
   } finally {
     await server.close();
   }
+});
+
+test('text chat rejects the removed --prompt option', async () => {
+  const result = await runCli(['text', 'chat', '--prompt', 'legacy']);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /unknown option.*--prompt/i);
 });
 
 test('text chat without --message or --messages-file exits non-zero', async () => {
@@ -695,7 +698,7 @@ test('speech synthesize forwards speed and response_format only when provided', 
       'speech', 'synthesize',
       '--text', 'hi',
       '--voice', 'v',
-      '--output', outputFile,
+      '--out', outputFile,
       '--speed', '1.5',
       '--format', 'wav'
     ], { home });
@@ -813,7 +816,7 @@ test('regression: commands without the new optional params omit them entirely fr
 
     // synthesize
     const regrTtsOutput = path.join(home, 'regr.wav');
-    assert.equal((await runCli(['--quiet', '--base-url', ttsServer.baseUrl, 'speech', 'synthesize', '--text', 'hi', '--voice', 'v', '--output', regrTtsOutput], { home })).status, 0);
+    assert.equal((await runCli(['--quiet', '--base-url', ttsServer.baseUrl, 'speech', 'synthesize', '--text', 'hi', '--voice', 'v', '--out', regrTtsOutput], { home })).status, 0);
     const ttsBody = JSON.parse(ttsServer.requests[0].body);
     assert.equal('response_format' in ttsBody, false);
     assert.equal('speed' in ttsBody, false);
@@ -843,7 +846,7 @@ test('regression: commands without the new optional params omit them entirely fr
 test('non-TTY with no --output defaults to JSON output', async () => {
   const home = makeHome();
   assert.equal((await runCli(['config', 'set', 'api_key', 'AUTOTTY_KEY'], { home })).status, 0);
-  const result = await runCli(['auth', 'status'], { home });
+  const result = await runCli(['auth', 'status', '--region', 'Global'], { home });
   assert.equal(result.status, 0, result.stderr);
   // Must be valid JSON (would throw otherwise).
   const parsed = JSON.parse(result.stdout);
@@ -853,23 +856,23 @@ test('non-TTY with no --output defaults to JSON output', async () => {
 // Environment overrides config (flag > env > config > default).
 test('STEPFUN_REGION env var overrides the persisted region in auth status', async () => {
   const home = makeHome();
-  assert.equal((await runCli(['config', 'set', 'region', 'PayGo-CN'], { home })).status, 0);
+  assert.equal((await runCli(['config', 'set', 'region', 'CN'], { home })).status, 0);
   assert.equal((await runCli(['config', 'set', 'api_key', 'REGION_ENV_KEY'], { home })).status, 0);
   const result = await runCli(['--output', 'json', 'auth', 'status'], {
     home,
-    env: { STEPFUN_REGION: 'PayGo-Global' }
+    env: { STEPFUN_REGION: 'Global' }
   });
   assert.equal(result.status, 0, result.stderr);
   const status = JSON.parse(result.stdout);
-  assert.equal(status.region, 'PayGo-Global');
-  assert.equal(status.baseUrl, 'https://api.stepfun.ai/v1');
+  assert.equal(status.region, 'StepPlan-Global');
+  assert.equal(status.baseUrl, 'https://api.stepfun.ai/step_plan/v1');
 });
 
 // STEPFUN_OUTPUT env var forces JSON regardless of TTY.
 test('STEPFUN_OUTPUT=json env var produces JSON output', async () => {
   const home = makeHome();
   assert.equal((await runCli(['config', 'set', 'api_key', 'OUTPUT_ENV_KEY'], { home })).status, 0);
-  const result = await runCli(['auth', 'status'], {
+  const result = await runCli(['auth', 'status', '--region', 'Global'], {
     home,
     env: { STEPFUN_OUTPUT: 'json' }
   });
@@ -895,7 +898,7 @@ test('--timeout <seconds> aborts a request that exceeds the configured timeout',
       ['--output', 'text', '--timeout', '1', 'text', 'chat', '--message', 'hi'],
       { home }
     );
-    assert.notEqual(result.status, 0);
+    assert.equal(result.status, 5);
     assert.match(result.stderr, /timeout|abort/i);
   } finally {
     await server.close();
@@ -919,6 +922,55 @@ test('apiKey from the environment takes precedence over the persisted config key
     );
     assert.equal(result.status, 0, result.stderr);
     assert.equal(server.requests[0].headers.authorization, 'Bearer ENV_KEY');
+  } finally {
+    await server.close();
+  }
+});
+
+test('STEPFUN_BASE_URL env var overrides persisted config base_url', async () => {
+  const configServer = await startMockServer(async (_req, res) => {
+    res.writeHead(500, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: 'config server should not be used' }));
+  });
+  const envServer = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: 'env base url' } }] }));
+  });
+  try {
+    const home = makeHome();
+    assert.equal((await runCli(['config', 'set', 'api_key', 'BASE_URL_ENV_KEY'], { home })).status, 0);
+    assert.equal((await runCli(['config', 'set', 'base_url', configServer.baseUrl], { home })).status, 0);
+
+    const result = await runCli(
+      ['--output', 'text', 'text', 'chat', '--message', 'hi'],
+      { home, env: { STEPFUN_BASE_URL: envServer.baseUrl } }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout.trim(), 'env base url');
+    assert.equal(configServer.requests.length, 0);
+    assert.equal(envServer.requests.length, 1);
+  } finally {
+    await Promise.all([configServer.close(), envServer.close()]);
+  }
+});
+
+test('--verbose prints safe HTTP metadata without exposing credentials', async () => {
+  const server = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
+  });
+  try {
+    const result = await runCli([
+      '--api-key', 'VERBOSE_SECRET_KEY',
+      '--base-url', server.baseUrl,
+      '--output', 'text',
+      '--verbose',
+      'text', 'chat', '--message', 'hi'
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stderr, /\[verbose\] HTTP request: POST .*\/chat\/completions/);
+    assert.match(result.stderr, /\[verbose\] HTTP response: 200/);
+    assert.doesNotMatch(result.stderr + result.stdout, /VERBOSE_SECRET_KEY/);
   } finally {
     await server.close();
   }
@@ -1019,20 +1071,53 @@ test('image edit --dry-run shows the image path and size without leaking its con
   }
 });
 
+test('file upload --dry-run reports a missing local file as path/error without auth or network', async () => {
+  const server = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ id: 'should-not-upload' }));
+  });
+  try {
+    const missingFile = path.join(makeHome(), 'missing.png');
+    const result = await runCli([
+      '--dry-run',
+      '--output', 'json',
+      '--base-url', server.baseUrl,
+      'file', 'upload',
+      '--file', missingFile,
+      '--purpose', 'storage'
+    ], { env: { STEPFUN_API_KEY: '' } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(server.requests.length, 0);
+    const summary = JSON.parse(result.stdout);
+    assert.equal(summary.command, 'file upload');
+    assert.equal(summary.file.path, missingFile);
+    assert.ok(typeof summary.file.error === 'string' && summary.file.error.length > 0);
+  } finally {
+    await server.close();
+  }
+});
+
 // --non-interactive blocks auth login's prompt and exits non-zero.
 test('auth login --non-interactive refuses to prompt and exits non-zero', async () => {
   const home = makeHome();
   const result = await runCli(['--non-interactive', 'auth', 'login'], { home });
-  assert.notEqual(result.status, 0);
+  assert.equal(result.status, 2);
   assert.match(result.stderr, /config set api_key|--api-key/);
   assert.equal(result.stdout, '');
+});
+
+test('auth logout --non-interactive requires --yes', async () => {
+  const home = makeHome();
+  const result = await runCli(['--non-interactive', 'auth', 'logout'], { home });
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Re-run with --yes/);
 });
 
 // auth logout --yes clears the persisted credentials.
 test('auth logout --yes clears credentials and auth status reports unauthenticated', async () => {
   const home = makeHome();
   assert.equal((await runCli(['config', 'set', 'api_key', 'LOGOUT_KEY'], { home })).status, 0);
-  assert.equal((await runCli(['config', 'set', 'region', 'PayGo-Global'], { home })).status, 0);
+  assert.equal((await runCli(['config', 'set', 'region', 'Global'], { home })).status, 0);
 
   const logoutResult = await runCli(['auth', 'logout', '--yes'], { home });
   assert.equal(logoutResult.status, 0, logoutResult.stderr);
@@ -1088,8 +1173,164 @@ test('config set output json persists and is reflected by config show', async ()
   assert.equal(shown.output, 'json');
 });
 
+test('config show and export-schema honor --output text', async () => {
+  const home = makeHome();
+  assert.equal((await runCli(['config', 'set', 'output', 'json'], { home })).status, 0);
+
+  const showResult = await runCli(['--output', 'text', 'config', 'show'], { home });
+  assert.equal(showResult.status, 0, showResult.stderr);
+  assert.match(showResult.stdout, /output: json/);
+  assert.doesNotMatch(showResult.stdout.trim(), /^\{/);
+
+  const schemaResult = await runCli(['--output', 'text', 'config', 'export-schema', '--command', 'models list'], { home });
+  assert.equal(schemaResult.status, 0, schemaResult.stderr);
+  assert.match(schemaResult.stdout, /type: function/);
+  assert.doesNotMatch(schemaResult.stdout.trim(), /^\{/);
+});
+
 test('invalid --output is rejected as a usage error', async () => {
   const result = await runCli(['--output', 'yaml', 'models', 'list']);
   assert.equal(result.status, 2);
   assert.match(result.stderr, /Unknown output: yaml/);
+});
+
+// --- New parameter validation (Phase 1-B) ---
+
+test('text chat --n 0 exits USAGE(2)', async () => {
+  const result = await runCli(['--output', 'json', 'text', 'chat', '--message', 'hi', '--n', '0']);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--n must be a positive integer/);
+});
+
+test('text chat --n abc exits USAGE(2)', async () => {
+  const result = await runCli(['--output', 'json', 'text', 'chat', '--message', 'hi', '--n', 'abc']);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--n must be a positive integer/);
+});
+
+test('text chat --n 1.5 exits USAGE(2)', async () => {
+  const result = await runCli(['--output', 'json', 'text', 'chat', '--message', 'hi', '--n', '1.5']);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--n must be a positive integer/);
+});
+
+test('text chat --n 2 --output text exits USAGE(2)', async () => {
+  const result = await runCli(['--output', 'text', 'text', 'chat', '--message', 'hi', '--n', '2']);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--n > 1 requires --output json/);
+});
+
+test('text chat --n 2 --output json forwards n to the API', async () => {
+  const server = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
+  });
+  try {
+    const home = makeHome();
+    assert.equal((await runCli(['config', 'set', 'api_key', 'N_JSON_KEY'], { home })).status, 0);
+    assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
+    const result = await runCli(['--output', 'json', 'text', 'chat', '--message', 'hi', '--n', '2'], { home });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(server.requests[0].body).n, 2);
+  } finally {
+    await server.close();
+  }
+});
+
+test('text chat --response-format invalid exits USAGE(2)', async () => {
+  const result = await runCli(['--output', 'json', 'text', 'chat', '--message', 'hi', '--response-format', 'xml']);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /Invalid --response-format/);
+});
+
+test('text chat --frequency-penalty out of range exits USAGE(2)', async () => {
+  const result = await runCli(['--output', 'json', 'text', 'chat', '--message', 'hi', '--frequency-penalty', '1.5']);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /--frequency-penalty must be between 0.0 and 1.0/);
+});
+
+test('text chat forwards reasoning_effort and reasoning_format to the API', async () => {
+  const server = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
+  });
+  try {
+    const home = makeHome();
+    assert.equal((await runCli(['config', 'set', 'api_key', 'REASON_KEY'], { home })).status, 0);
+    assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
+    const result = await runCli([
+      '--output', 'json', 'text', 'chat',
+      '--message', 'hi',
+      '--reasoning-effort', 'high',
+      '--reasoning-format', 'deepseek-style'
+    ], { home });
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(server.requests[0].body);
+    assert.equal(body.reasoning_effort, 'high');
+    assert.equal(body.reasoning_format, 'deepseek-style');
+  } finally {
+    await server.close();
+  }
+});
+
+test('text chat forwards repeatable --stop as array to the API', async () => {
+  const server = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
+  });
+  try {
+    const home = makeHome();
+    assert.equal((await runCli(['config', 'set', 'api_key', 'STOP_KEY'], { home })).status, 0);
+    assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
+    const result = await runCli([
+      '--output', 'json', 'text', 'chat',
+      '--message', 'hi',
+      '--stop', 'END',
+      '--stop', 'STOP'
+    ], { home });
+    assert.equal(result.status, 0, result.stderr);
+    const body = JSON.parse(server.requests[0].body);
+    assert.deepEqual(body.stop, ['END', 'STOP']);
+  } finally {
+    await server.close();
+  }
+});
+
+test('SSE stream with non-event-stream content-type exits API_ERROR(1)', async () => {
+  const server = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }));
+  });
+  try {
+    const home = makeHome();
+    assert.equal((await runCli(['config', 'set', 'api_key', 'SSE_CT_KEY'], { home })).status, 0);
+    assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
+    const result = await runCli(['--output', 'text', 'text', 'chat', '--stream', '--message', 'hi'], { home });
+    assert.equal(result.status, 1, result.stderr);
+    assert.match(result.stderr, /Expected SSE stream/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('SSE stream uses delta.reasoning fallback when reasoning_content is absent', async () => {
+  const server = await startMockServer(async (_req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.write('data: {"choices":[{"delta":{"reasoning":"private reasoning via fallback"}}]}\n\n');
+    res.write('data: {"choices":[{"delta":{"content":"answer"}}]}\n\n');
+    res.end('data: [DONE]\n\n');
+  });
+  try {
+    const home = makeHome();
+    assert.equal((await runCli(['config', 'set', 'api_key', 'REASON_FALLBACK_KEY'], { home })).status, 0);
+    assert.equal((await runCli(['config', 'set', 'base_url', server.baseUrl], { home })).status, 0);
+    const result = await runCli(['--output', 'text', 'text', 'chat', '--stream', '--message', 'hi'], { home });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, 'answer\n');
+    assert.match(result.stderr, /Thinking/);
+    assert.match(result.stderr, /Response/);
+    assert.doesNotMatch(result.stdout + result.stderr, /private reasoning via fallback/);
+  } finally {
+    await server.close();
+  }
 });

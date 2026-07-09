@@ -4,3 +4,4 @@ bin/
 tmp/
 .agents/
 .codex/
+.repos/

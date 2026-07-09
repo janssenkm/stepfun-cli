@@ -29,7 +29,7 @@ test('config set region rejects invalid region with non-zero exit code', () => {
   // Invalid region is a USAGE error (exit code 2).
   assert.equal(result.status, 2);
   assert.match(result.stderr + result.stdout, /Unknown region: Bad-Region/);
-  assert.match(result.stderr + result.stdout, /StepPlan-CN, StepPlan-Global, PayGo-CN, PayGo-Global/);
+  assert.match(result.stderr + result.stdout, /StepPlan-Global \(Global\), StepPlan-CN \(CN\)/);
 });
 
 test('auth status rejects invalid --region with non-zero exit code', () => {
