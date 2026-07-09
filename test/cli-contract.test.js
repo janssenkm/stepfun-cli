@@ -53,12 +53,13 @@ async function startServer(respond) {
   };
 }
 
-test('all four regions resolve to their exact contract URLs', async () => {
+test('canonical regions and aliases resolve to their exact contract URLs', async () => {
   const regions = {
-    'StepPlan-CN': 'https://api.stepfun.com/step_plan/v1',
     'StepPlan-Global': 'https://api.stepfun.ai/step_plan/v1',
-    'PayGo-CN': 'https://api.stepfun.com/v1',
-    'PayGo-Global': 'https://api.stepfun.ai/v1'
+    'Global': 'https://api.stepfun.ai/step_plan/v1',
+    'StepFun-Global': 'https://api.stepfun.ai/step_plan/v1',
+    'StepPlan-CN': 'https://api.stepfun.com/step_plan/v1',
+    'CN': 'https://api.stepfun.com/step_plan/v1'
   };
 
   for (const [region, baseUrl] of Object.entries(regions)) {
@@ -112,7 +113,7 @@ test('CLI auth and endpoint options override environment, which overrides config
 });
 
 test('environment key is used when no flag or persisted key exists', async () => {
-  const result = await runCli(['--output', 'json', 'auth', 'status'], {
+  const result = await runCli(['--region', 'Global', '--output', 'json', 'auth', 'status'], {
     env: { STEPFUN_API_KEY: 'ENVIRONMENT_KEY' }
   });
   assert.equal(result.status, 0, result.stderr);
@@ -133,6 +134,7 @@ test('keys of eight characters or fewer are fully masked in text and JSON output
   for (const outputArgs of [[], ['--output', 'json']]) {
     const result = await runCli([
       '--api-key', 'short123',
+      '--region', 'Global',
       ...outputArgs,
       'auth', 'status'
     ]);
@@ -152,12 +154,12 @@ test('API non-success status is reported verbatim and exits non-zero', async () 
       '--api-key', 'error-key', '--base-url', server.url,
       'text', 'chat', '--message', 'trigger error'
     ]);
-    // 429 is a generic API error (exit code 1). The runner is not a TTY, so
+    // 429 is a QUOTA error (exit code 4). The runner is not a TTY, so
     // the error is emitted as a structured JSON envelope on stderr.
-    assert.equal(result.status, 1);
+    assert.equal(result.status, 4);
     assert.equal(result.stdout, '');
     const envelope = JSON.parse(result.stderr);
-    assert.equal(envelope.error.code, 'API_ERROR');
+    assert.equal(envelope.error.code, 'QUOTA');
     assert.match(envelope.error.message, /API Error \(429\): \{"error":"rate limited"\}/);
     assert.equal(server.requests.length, 1);
   } finally {
@@ -191,7 +193,7 @@ test('chat text output extracts content while JSON output preserves the response
 });
 
 // --- Structured error codes (Block D2b) ---
-// The CLI classifies failures into exit codes 0/1/2/3/6 and, in JSON mode,
+// The CLI classifies failures into exit codes 0/1/2/3/4/5/6/10 and, in JSON mode,
 // emits `{ error: { code, message, hint? } }` on stderr.
 
 test('missing API key exits AUTH(3) and emits a JSON AUTH envelope on stderr', async () => {
@@ -248,6 +250,110 @@ test('a 401 response exits AUTH(3) with a JSON AUTH envelope on stderr', async (
     const envelope = JSON.parse(result.stderr);
     assert.equal(envelope.error.code, 'AUTH');
     assert.match(envelope.error.message, /API Error \(401\)/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('a 402 response exits QUOTA(4) with a JSON QUOTA envelope on stderr', async () => {
+  const server = await startServer((_req, res) => {
+    res.writeHead(402, { 'content-type': 'application/json' });
+    res.end('{"error":"insufficient balance"}');
+  });
+  try {
+    const result = await runCli([
+      '--api-key', 'QUOTA_KEY', '--base-url', server.url,
+      '--output', 'json',
+      'text', 'chat', '--message', 'hi'
+    ]);
+    assert.equal(result.status, 4);
+    assert.equal(result.stdout, '');
+    const envelope = JSON.parse(result.stderr);
+    assert.equal(envelope.error.code, 'QUOTA');
+    assert.match(envelope.error.message, /API Error \(402\)/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('a 451 response exits CONTENT_FILTER(10) with a JSON CONTENT_FILTER envelope on stderr', async () => {
+  const server = await startServer((_req, res) => {
+    res.writeHead(451, { 'content-type': 'application/json' });
+    res.end('{"error":"content blocked by moderation"}');
+  });
+  try {
+    const result = await runCli([
+      '--api-key', 'CF_KEY', '--base-url', server.url,
+      '--output', 'json',
+      'text', 'chat', '--message', 'hi'
+    ]);
+    assert.equal(result.status, 10);
+    assert.equal(result.stdout, '');
+    const envelope = JSON.parse(result.stderr);
+    assert.equal(envelope.error.code, 'CONTENT_FILTER');
+    assert.match(envelope.error.message, /API Error \(451\)/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('a non-451 response with content moderation keywords exits CONTENT_FILTER(10)', async () => {
+  const server = await startServer((_req, res) => {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end('{"error":"Content Filter triggered for this request"}');
+  });
+  try {
+    const result = await runCli([
+      '--api-key', 'CF_KEY', '--base-url', server.url,
+      '--output', 'json',
+      'text', 'chat', '--message', 'hi'
+    ]);
+    assert.equal(result.status, 10);
+    assert.equal(result.stdout, '');
+    const envelope = JSON.parse(result.stderr);
+    assert.equal(envelope.error.code, 'CONTENT_FILTER');
+  } finally {
+    await server.close();
+  }
+});
+
+test('a 408 response exits TIMEOUT(5) with a JSON TIMEOUT envelope on stderr', async () => {
+  const server = await startServer((_req, res) => {
+    res.writeHead(408, { 'content-type': 'application/json' });
+    res.end('{"error":"request timeout"}');
+  });
+  try {
+    const result = await runCli([
+      '--api-key', 'TO_KEY', '--base-url', server.url,
+      '--output', 'json',
+      'text', 'chat', '--message', 'hi'
+    ]);
+    assert.equal(result.status, 5);
+    assert.equal(result.stdout, '');
+    const envelope = JSON.parse(result.stderr);
+    assert.equal(envelope.error.code, 'TIMEOUT');
+    assert.match(envelope.error.message, /API Error \(408\)/);
+  } finally {
+    await server.close();
+  }
+});
+
+test('a 504 response exits TIMEOUT(5) with a JSON TIMEOUT envelope on stderr', async () => {
+  const server = await startServer((_req, res) => {
+    res.writeHead(504, { 'content-type': 'application/json' });
+    res.end('{"error":"gateway timeout"}');
+  });
+  try {
+    const result = await runCli([
+      '--api-key', 'TO_KEY', '--base-url', server.url,
+      '--output', 'json',
+      'text', 'chat', '--message', 'hi'
+    ]);
+    assert.equal(result.status, 5);
+    assert.equal(result.stdout, '');
+    const envelope = JSON.parse(result.stderr);
+    assert.equal(envelope.error.code, 'TIMEOUT');
+    assert.match(envelope.error.message, /API Error \(504\)/);
   } finally {
     await server.close();
   }

@@ -42,7 +42,7 @@ Do not reintroduce `node-fetch`, `form-data`, `dotenv`, `tsup`, or a local `pkg`
 
 Adding a model capability requires synchronized changes to:
 
-- model lists and command options in `src/index.ts`;
+- model lists and command options in `src/commands/`;
 - API wrappers in `src/api.ts`;
 - `README.md` and `README-CN.md`;
 - `docs/PRD.md` and `docs/DESIGN.md`;
@@ -54,12 +54,10 @@ API URL, Region, and Base URL changes must preserve these exact mappings:
 
 | Region | Description | Base URL |
 | --- | --- | --- |
-| `StepPlan-CN` | China StepPlan only | `https://api.stepfun.com/step_plan/v1` |
 | `StepPlan-Global` | Global StepPlan only | `https://api.stepfun.ai/step_plan/v1` |
-| `PayGo-CN` | China pay-as-you-go API | `https://api.stepfun.com/v1` |
-| `PayGo-Global` | Global pay-as-you-go API | `https://api.stepfun.ai/v1` |
+| `StepPlan-CN` | China StepPlan only | `https://api.stepfun.com/step_plan/v1` |
 
-The default is `PayGo-CN`. StepPlan officially covers chat/reasoning endpoints only. Speech and image commands must warn under StepPlan unless `--quiet` is set.
+Aliases are `Global` and `CN`; `StepFun-Global` is accepted for compatibility. With an API key and no Region or custom Base URL, probe both endpoints using Bearer and `x-api-key`, cache the canonical result, and fall back to `StepPlan-Global`. `auth login` still requires manual selection. Speech and image commands warn about StepPlan coverage unless quiet.
 
 ## 5. Configuration and authentication
 
@@ -85,7 +83,7 @@ Supported environment variables:
 
 Authentication commands:
 
-- `stepfun auth login`: interactively select one of four Regions and read a hidden API key.
+- `stepfun auth login`: interactively select Global or CN and read a hidden API key.
 - `stepfun auth status`: show status, source, masked key, Region, and Base URL.
 - `stepfun auth logout [--yes]`: clear local credentials and configuration.
 
@@ -101,14 +99,31 @@ stepfun
   auth login
   auth logout [--yes]
   auth status
-  config set <key> <value>
+  auth refresh (unsupported)
+  config set <key> <value> | --key <key> --value <value>
   config show
+  config export-schema [--command <path>]
   models list
   text chat
-  speech synthesize
+  text repl (unsupported)
+  speech synthesize|generate
   speech recognize
+  speech voices (unsupported)
   image edit
+  image generate (unsupported)
+  file upload
+  file list
+  file get <file-id>
+  file content <file-id> [-o, --out <path>]
+  file delete <file-id> [--yes]
+  video generate | task get | download (unsupported)
+  music generate | cover (unsupported)
+  search query|web (unsupported)
+  vision describe (unsupported)
+  quota show (unsupported)
 ```
+
+Unsupported commands are discoverable in help and must return exit code 2 with a structured `UNSUPPORTED` error without authentication or network access.
 
 Global options:
 
@@ -159,7 +174,10 @@ Exit codes:
 | `1` | API_ERROR | Non-authentication API error |
 | `2` | USAGE | Invalid arguments, unknown config key, or missing confirmation |
 | `3` | AUTH | Missing API key, HTTP 401, or HTTP 403 |
+| `4` | QUOTA | HTTP 402 balance insufficient or 429 rate/resource limit |
+| `5` | TIMEOUT | HTTP 408/504 or request timed out |
 | `6` | NETWORK | Fetch, DNS, connection, or timeout failure |
+| `10` | CONTENT_FILTER | HTTP 451 or content moderation blocked |
 
 ## 8. Development and release
 
@@ -177,6 +195,10 @@ Build output:
 ```text
 dist/
   api.js
+  cli/
+  client/
+  commands/
+  config/
   config.js
   index.js
   update.js
@@ -200,3 +222,23 @@ This downloads `pkg@5.8.1` on demand and writes `bin/{os}/x64/stepfun(.exe)`. `b
 - `AGENTS.md`: mandatory repository rules in English.
 
 Code comments must be English. User-facing localized strings may remain Chinese where required by the interface. Do not duplicate the complete README inside `AGENTS.md`; keep only durable constraints here.
+
+## 10. Development execution
+
+- `npm run build` runs `tsc` only (no separate typecheck or lint step exists).
+- `npm test` runs `npm run build && node --test test/*.test.js`.
+- Tests use Node's built-in `node:test` runner, not Jest or Mocha.
+- Each test spawns the compiled `dist/index.js` in a child process with an isolated `HOME` temp directory and local mock HTTP servers, so tests do not touch the real API or the user's `~/.stepfun-cli`.
+- Config file is auto-created on first `saveConfig`; a missing or malformed file is treated as empty.
+- `auth login` is interactive-only; under `--non-interactive` it exits USAGE(2). Non-interactive auth setup uses `config set api_key <key>` and `config set region <region>`.
+- `auth logout` requires `--yes` under `--non-interactive`.
+
+## 11. CLI behavior quirks
+
+- Global flags may precede or follow nested commands, for example `stepfun text chat --message hi --region Global`.
+- `--message` is a repeatable array option and supports `system:`, `user:`, and `assistant:` role prefixes.
+- `--messages-file -` reads a JSON messages array from stdin.
+- Streaming: auto-enabled when stdout is a TTY and `--output json` is not set; `--output json` forces non-streaming regardless of `--stream`. Reasoning deltas go to stderr only; raw reasoning is never printed to stdout. `--quiet` suppresses the `Thinking...` / `Response:` status lines.
+- Dry run: validates options and region before checking for an API key; `--dry-run` never creates a client or sends a network request. Files are represented as `{ path, size }` or `{ path, error }`; binary content is never exposed.
+- `--verbose` prints HTTP request and response metadata to stderr without API keys, bodies, or file contents.
+- `default_text_model` and `default_speech_model` config keys are supported; each capability has its own resolver (`resolveTextModel`, `resolveSpeechTtsModel`).

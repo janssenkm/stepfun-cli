@@ -11,6 +11,8 @@ Supported capabilities:
 - Speech recognition: `stepaudio-2.5-asr`
 - Image editing: `step-image-edit-2`
 
+The full Resource tree also includes discoverable commands for future capabilities. Commands marked `(unsupported)` in `--help` return exit code 2 with a structured `UNSUPPORTED` error and never call an API. Detailed contracts are in [docs/resources](docs/resources).
+
 ## Installation
 
 Node.js 18 or later is required.
@@ -32,7 +34,7 @@ For CI, inject the API key through the environment and select JSON output explic
 
 ```bash
 export STEPFUN_API_KEY="YOUR_API_KEY"
-stepfun --region PayGo-Global --output json text chat --message "Hello"
+stepfun --region Global --output json text chat --message "Hello"
 ```
 
 Standalone x64 binaries may be published as optional release artifacts:
@@ -47,14 +49,12 @@ NPM remains the primary installation method.
 
 ## Regions and endpoints
 
-| Region | Billing | Geography | Base URL |
+| Region | Alias | Geography | Base URL |
 | --- | --- | --- | --- |
-| `StepPlan-CN` | StepPlan | China | `https://api.stepfun.com/step_plan/v1` |
-| `StepPlan-Global` | StepPlan | Global | `https://api.stepfun.ai/step_plan/v1` |
-| `PayGo-CN` | Pay-as-you-go | China | `https://api.stepfun.com/v1` |
-| `PayGo-Global` | Pay-as-you-go | Global | `https://api.stepfun.ai/v1` |
+| `StepPlan-Global` | `Global` | Global | `https://api.stepfun.ai/step_plan/v1` |
+| `StepPlan-CN` | `CN` | China | `https://api.stepfun.com/step_plan/v1` |
 
-The default region is `PayGo-CN`. StepPlan officially covers chat/reasoning endpoints only. Speech and image commands print a warning when used with StepPlan; `--quiet` suppresses the warning.
+`StepFun-Global` is accepted as a compatibility alias for `StepPlan-Global`. When an API key exists but no Region or custom Base URL is configured, the CLI probes both endpoints using Bearer and `x-api-key` authentication, caches the detected canonical Region, and falls back to `StepPlan-Global` if neither endpoint validates. `auth login` still requires an explicit user selection. StepPlan officially covers chat/reasoning endpoints only; other capabilities print a warning unless `--quiet` is set.
 
 Configuration precedence is fixed:
 
@@ -74,6 +74,12 @@ The supported environment variables are:
 
 `--base-url` overrides the URL selected by `--region`, but the region still controls geography-dependent defaults and warnings.
 
+Global flags may appear before a Resource or after a nested Command:
+
+```bash
+stepfun text chat --message "Hello" --region Global --output json
+```
+
 ## Authentication and configuration
 
 Interactive authentication:
@@ -88,12 +94,16 @@ stepfun auth logout --yes
 Non-interactive configuration:
 
 ```bash
-stepfun config set region PayGo-Global
+stepfun config set region Global
 stepfun config set api_key "YOUR_API_KEY"
 stepfun config set output json
 stepfun config set timeout 300
+stepfun config set --key timeout --value 300
 stepfun config show
+stepfun config export-schema --command "text chat"
 ```
+
+`config export-schema` emits OpenAI-compatible function tool JSON from the same command definitions used by runtime parsing and help. Omit `--command` to export every leaf command.
 
 Supported configuration keys:
 
@@ -133,6 +143,10 @@ Run:
 
 The command does not query the registry or modify the global installation. Standalone binaries instead direct users to the project releases.
 
+## Known limitations
+
+- **HTTP/HTTPS proxy is not currently supported.** The CLI uses Node.js 18 native `fetch`, which does not support proxy configuration. Use environment-level proxy settings or a local forwarder if needed.
+
 ## Models
 
 ```bash
@@ -164,8 +178,6 @@ stepfun text chat \
   --message "Explain the available models."
 ```
 
-`-p, --prompt` is a compatibility alias. If both forms are present, `--message` wins.
-
 Additional options:
 
 | Option | Request field |
@@ -175,9 +187,16 @@ Additional options:
 | `--temperature <number>` | `temperature` |
 | `--top-p <number>` | `top_p` |
 | `--max-tokens <int>` | `max_tokens` |
+| `--reasoning-effort <low|medium|high>` | `reasoning_effort` |
+| `--reasoning-format <format>` | `reasoning_format` |
+| `--stop <text>` | repeatable stop sequence |
+| `--frequency-penalty <number>` | `frequency_penalty` |
+| `--response-format <text|json_object>` | `response_format` |
+| `-n, --n <count>` | `n`; values above 1 require `--output json` |
 | `--stream` / `--no-stream` | streaming selection |
+| `--tool <json-or-path>` | registered for discovery; currently returns `UNSUPPORTED` |
 
-`--message`, `--prompt`, or `--messages-file` is required. Messages supplied on the command line are appended after file messages. A `system:` message overrides `--system`.
+`--message` or `--messages-file` is required. Messages supplied on the command line are appended after file messages. A `system:` message overrides `--system`.
 
 ```bash
 echo '[{"role":"user","content":"Hello"}]' | stepfun text chat --messages-file -
@@ -193,10 +212,11 @@ stepfun speech synthesize \
   --text "Hello from StepFun." \
   --voice lively-girl \
   --format mp3 \
-  --output hello.mp3
+  --out hello.mp3
 ```
 
 The default output path is `output.mp3`. The default voice is `cixingnansheng` for China regions and `lively-girl` for global regions.
+`speech generate` is an alias with the same behavior and flags.
 
 Optional request parameters:
 
@@ -205,7 +225,8 @@ Optional request parameters:
 - `--sample-rate <number>`
 - `--format <wav|mp3|flac|opus|pcm>`
 
-The synthesis command's `--output <file>` is a file path. The global `--output text|json` option must appear before the top-level command.
+The synthesis command uses `--out <file>` for the audio path. Global `--output text|json` controls presentation and may appear before or after a nested command.
+The registered discovery flags `--text-file`, `--pitch`, `--bitrate`, `--channels`, `--language`, `--subtitles`, `--pronunciation`, and `--stream` currently return `UNSUPPORTED`.
 
 ## Speech recognition
 
@@ -239,6 +260,7 @@ Optional request parameters:
 - `--steps <int>`
 - `--cfg-scale <number>`
 - `--negative-prompt <text>`
+- `--out <path>` is registered for the destination contract but currently returns `UNSUPPORTED`.
 
 The default response format is `b64_json`. For scripts, decode it to a file or request a URL:
 
@@ -252,12 +274,42 @@ stepfun --quiet --output json image edit \
   | jq -r '.data[0].url'
 ```
 
-## Global options
+## Files
 
-Global options must precede the top-level command:
+Files provide reusable assets for multimodal features and parsed text extraction.
 
 ```bash
-stepfun --quiet --region PayGo-CN text chat --message "Hello"
+stepfun file upload --file report.pdf --purpose file-extract
+stepfun file upload --url https://example.com/image.png --purpose storage
+stepfun file list
+stepfun file get file-abc123
+stepfun file content file-abc123
+stepfun file delete file-abc123 --yes
+```
+
+Exactly one of `--file` or `--url` is required for upload. Supported purposes are `file-extract`, `retrieval-text`, `retrieval-image`, and `storage`. China API documentation covers all four; current Global upload documentation guarantees `storage` only, so other purposes produce a warning outside China. StepPlan Regions also produce the standard endpoint-coverage warning.
+
+Local uploads are validated before network access:
+
+- `file-extract` and `retrieval-text`: common text, PDF, Office, CSV, HTML, and XML files up to 64 MB.
+- `retrieval-image`: JPG/JPEG or PNG up to 64 MB.
+- `storage`: MP4, image, MP3, or WAV files up to 128 MB.
+
+`file content` returns parsed plain text and only applies to files uploaded with `purpose=file-extract`; it is not an original-file download command. Redirect text or write it explicitly:
+
+```bash
+stepfun --output text file content file-abc123 > report.txt
+stepfun file content file-abc123 --out report.txt
+```
+
+Deletion asks for confirmation. Non-interactive use requires `--yes`. With `--quiet`, upload prints only the new file ID and delete prints `deleted`.
+
+## Global options
+
+Global options may appear before the Resource or after a nested Command:
+
+```bash
+stepfun --quiet --region CN text chat --message "Hello"
 ```
 
 | Option | Description |
@@ -270,15 +322,15 @@ stepfun --quiet --region PayGo-CN text chat --message "Hello"
 | `--dry-run` | Print a safe request summary without authentication or network access |
 | `--non-interactive` | Never prompt |
 | `--quiet` | Suppress non-essential status output |
-| `--verbose` | Reserved diagnostic flag |
-| `--no-color` | Reserved color/animation flag |
+| `--verbose` | Print HTTP request and response metadata without credentials or bodies |
+| `--no-color` | Disable ANSI color in the streaming thinking indicator |
 
-`--verbose` and `--no-color` are currently reserved for compatibility.
+`--verbose` never prints API keys, request bodies, response bodies, or file contents.
 
 ### Dry run
 
 ```bash
-stepfun --dry-run --output json --region PayGo-Global \
+stepfun --dry-run --output json --region Global \
   text chat --model step-3.7-flash --message "Hello"
 
 stepfun --dry-run --output json image edit \
@@ -297,7 +349,10 @@ Errors are always written to stderr.
 | `1` | API_ERROR | Non-authentication API or general error |
 | `2` | USAGE | Invalid arguments or missing confirmation |
 | `3` | AUTH | Missing API key, HTTP 401, or HTTP 403 |
+| `4` | QUOTA | HTTP 402 balance insufficient or 429 rate/resource limit |
+| `5` | TIMEOUT | HTTP 408/504 or request timed out |
 | `6` | NETWORK | DNS, connection, fetch, or timeout failure |
+| `10` | CONTENT_FILTER | HTTP 451 or content moderation blocked |
 
 JSON errors use a stable envelope:
 
