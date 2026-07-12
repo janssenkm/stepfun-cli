@@ -1,6 +1,2 @@
-/** Package version read from the same manifest used for publishing. */
-const packageManifest = require('../package.json') as { version: string };
-export const CLI_VERSION = packageManifest.version;
-
-/** Stable client identifier attached to every model API request. */
-export const USER_AGENT = `stepfun-cli/${CLI_VERSION}`;
+// CLI version. Bump in lockstep with package.json.
+export const CLI_VERSION = '0.3.0';

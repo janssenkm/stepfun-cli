@@ -1,16 +1,21 @@
 # Models Resource
 
-Status: **Supported**.
+Status: **Supported**. Management base (`/v1`).
 
-## `models list`
+## Commands
 
-The command has no local flags and lists the built-in model catalog grouped by capability. Global `--output text` renders readable groups; `--output json` returns an object keyed by `text`, `speech`, and `image`.
+```
+models list                 list models available to your account
+models get <id>             retrieve a single model
+```
 
-The catalog is:
+## Notes
 
-- Text: `step-3.5-flash`, `step-3.5-flash-2603`, `step-3.7-flash`
-- Speech: `stepaudio-2.5-tts`, `stepaudio-2.5-asr`
-- Image: `step-image-edit-2`
+The model set differs by region and evolves over time. StepPlan-Global currently exposes (via `GET /models`) the `step-3.x-flash` text models plus `stepaudio-2.5-tts`, `stepaudio-2.5-asr`, `step-image-edit-2`; StepPlan-CN adds `stepaudio-2.5-realtime`, `stepaudio-2.5-chat`, `step-router-v1`. Always treat `models list` as the source of truth.
 
-This is local discovery, not a network-backed model listing. Adding or removing a model requires synchronized code, README, PRD, design, and test changes.
+## Example
 
+```bash
+stepfun models list
+stepfun models get step-3.7-flash
+```

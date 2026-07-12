@@ -1,26 +1,51 @@
-/**
- * Incrementally parses SSE data fields without assuming network chunks align
- * with lines or event boundaries. Non-data fields and comments are ignored.
- */
-export async function* parseSSE(response: Response): AsyncGenerator<string> {
+export interface ServerSentEvent {
+  event?: string;
+  data: string;
+  id?: string;
+}
+
+// Standard SSE parser. Handles chunked network reads, CRLF, comment lines, and
+// multi-line `data:` fields. Works for chat/completions, messages, responses,
+// ASR, and TTS streaming.
+export async function* parseSSE(response: Response): AsyncGenerator<ServerSentEvent> {
   const reader = response.body?.getReader();
   if (!reader) return;
 
   const decoder = new TextDecoder();
   let buffer = '';
-  let dataLines: string[] = [];
+  let event: Partial<ServerSentEvent> = {};
 
-  const consumeLine = (rawLine: string): string | undefined => {
+  const processLine = (rawLine: string): ServerSentEvent | undefined => {
     const line = rawLine.endsWith('\r') ? rawLine.slice(0, -1) : rawLine;
+
     if (line === '') {
-      if (dataLines.length === 0) return undefined;
-      const data = dataLines.join('\n');
-      dataLines = [];
-      return data;
+      const completed = event.data !== undefined
+        ? { data: event.data, event: event.event, id: event.id }
+        : undefined;
+      event = {};
+      return completed;
     }
+
     if (line.startsWith(':')) return undefined;
-    if (line === 'data') dataLines.push('');
-    else if (line.startsWith('data:')) dataLines.push(line.slice(5).trimStart());
+
+    const colonIndex = line.indexOf(':');
+    if (colonIndex === -1) return undefined;
+
+    const field = line.slice(0, colonIndex);
+    const value = line.slice(colonIndex + 1).trimStart();
+
+    switch (field) {
+      case 'data':
+        event.data = event.data !== undefined ? `${event.data}\n${value}` : value;
+        break;
+      case 'event':
+        event.event = value;
+        break;
+      case 'id':
+        event.id = value;
+        break;
+    }
+
     return undefined;
   };
 
@@ -28,21 +53,28 @@ export async function* parseSSE(response: Response): AsyncGenerator<string> {
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
+
       buffer += decoder.decode(value, { stream: true });
+
       const lines = buffer.split('\n');
       buffer = lines.pop() || '';
+
       for (const line of lines) {
-        const data = consumeLine(line);
-        if (data !== undefined) yield data;
+        const completed = processLine(line);
+        if (completed) yield completed;
       }
     }
 
     buffer += decoder.decode();
-    if (buffer) {
-      const data = consumeLine(buffer);
-      if (data !== undefined) yield data;
+
+    if (buffer.length > 0) {
+      const completed = processLine(buffer);
+      if (completed) yield completed;
     }
-    if (dataLines.length > 0) yield dataLines.join('\n');
+
+    if (event.data !== undefined) {
+      yield { data: event.data, event: event.event, id: event.id };
+    }
   } finally {
     reader.releaseLock();
   }

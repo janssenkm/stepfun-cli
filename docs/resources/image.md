@@ -1,23 +1,38 @@
 # Image Resource
 
-Status: **Partial**. `edit` is supported; text-to-image `generate` is registered but returns `UNSUPPORTED` until a StepFun model and endpoint are approved for this CLI.
-
-## `image edit`
-
-| Flag | Requirement |
-| --- | --- |
-| `--file <path>` | Required source image |
-| `--prompt <text>` | Required edit instruction |
-| `--model <model>` | Default `step-image-edit-2` |
-| `--response-format <b64_json|url>` | Select API representation, not CLI presentation |
-| `--seed <int>` | Optional deterministic seed |
-| `--steps <int>` | Optional inference steps |
-| `--cfg-scale <number>` | Optional classifier-free guidance scale |
-| `--negative-prompt <text>` | Optional negative instruction |
-| `--out <path>` | Registered destination contract; returns `UNSUPPORTED` until decoding and URL download are implemented |
-
-When no `--out` is supplied, the command prints the API result according to global `--output`. Multi-image `--out-dir` and `--out-prefix` must not be exposed unless the StepFun endpoint supports multiple results.
+Status: **Supported**. Generation base (`/step_plan/v1`), model `step-image-edit-2`. Images are returned base64 and saved to disk (`--out` / `--out-dir`).
 
 ## `image generate`
 
-Unsupported. The command exposes `--prompt`, `--model`, `--aspect-ratio`, `--n`, `--seed`, `--width`, `--height`, `--prompt-optimizer`, `--aigc-watermark`, `--subject-ref`, `--out`, `--response-format`, `--out-dir`, and `--out-prefix` for discovery, then returns `UNSUPPORTED`. They become executable requirements only after corresponding StepFun API fields exist.
+`POST /images/generations`
+
+```
+--prompt <text>            required (≤512 chars)
+--model <model>            default: step-image-edit-2
+--size <size>              1024x1024 | 768x1360 | 896x1184 | 1360x768 | 1184x896
+--n <n>                    number (server currently supports 1)
+--seed <n>  --steps <1-50>  --cfg-scale <1.0-10.0>
+--negative-prompt <text>   (≤512 chars)
+--text-mode                optimize for text rendering
+--response-format <b64_json|url>   default: b64_json
+--out <path> | --out-dir <dir> --out-prefix <prefix>
+```
+
+## `image edit`
+
+`POST /images/edits` (multipart)
+
+```
+--image <path>             required (≤4096x4096)
+--prompt <text>            required (≤512 chars)
+--model  --seed  --steps  --cfg-scale  --negative-prompt  --text-mode
+--response-format <b64_json|url>
+--out <path> | --out-dir <dir> --out-prefix <prefix>
+```
+
+## Examples
+
+```bash
+stepfun image generate --prompt "a serene alpine lake at sunset" --out lake.png
+stepfun image edit --image input.png --prompt "make it night time" --out night.png
+```

@@ -1,3 +1,5 @@
+// Packages the CLI into standalone binaries via vercel/pkg (npm run pkg).
+// Produces one binary per target under bin/<os>/<arch>/stepfun[.exe].
 const { spawnSync } = require('node:child_process');
 const fs = require('node:fs');
 const path = require('node:path');
