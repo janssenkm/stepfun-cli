@@ -91,6 +91,6 @@ In text mode, deltas print live; in JSON mode, the result is buffered and emitte
 - `config.test.js` — `parseConfigFile`, region validation, base profiles.
 - `registry.test.js` — command resolution + positional passthrough.
 - `contract.test.js` — spawned CLI with isolated `HOME`: help/version/unknown-command/auth-gate/dry-run.
-- `mock.test.js` — in-process mock server exercising every `api/*` path (JSON, SSE, binary, multipart), including TTS binary + SSE. In-process (not spawned) because restricted sandboxes block cross-process loopback fetch.
+- `mock.test.js` — in-process mock server exercising each `api/*` module across JSON / SSE / binary / multipart paths: models list+get, account, files upload+list+get+delete+content, token, chat (stream/non-stream/tool-call), messages (text + tool_use), responses (text + function_call), image generate+edit, TTS binary+SSE, ASR. In-process (not spawned) because restricted sandboxes block cross-process loopback fetch.
 
 Real-API verification (Global key) covers: models, account, files CRUD, token count, chat (stream/non-stream/tool-call/reasoning), messages, responses, image generate/edit, ASR.

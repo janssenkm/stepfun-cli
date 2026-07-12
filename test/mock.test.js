@@ -33,8 +33,15 @@ function mockServer() {
       const json = () => { try { return JSON.parse(body); } catch { return null; } };
 
       if (p === '/models') { rec('models', { method: req.method }); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ object: 'list', data: [{ id: 'step-3.7-flash', object: 'model', owned_by: 'stepai' }] })); }
+      const modelId = p.match(/^\/models\/([^/]+)$/);
+      if (modelId) { rec('models.get', { id: decodeURIComponent(modelId[1]) }); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ id: decodeURIComponent(modelId[1]), object: 'model', owned_by: 'stepai' })); }
       if (p === '/accounts') { rec('accounts', { auth: req.headers['authorization'] }); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ object: 'account', type: 'prepaid', balance: 5, total_cash_balance: 10, total_voucher_balance: 20 })); }
       if (p === '/files' && req.method === 'POST') { rec('files.upload', { multipart: ct.includes('multipart/form-data'), hasPurpose: body.includes('storage') }); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ id: 'file-mock', object: 'file', bytes: 12, filename: 'x.png', purpose: 'storage', status: 'success' })); }
+      if ((p === '/files' || p.startsWith('/files?')) && req.method === 'GET') { const q = new URL('http://x' + req.url).searchParams; rec('files.list', { limit: q.get('limit'), order: q.get('order') }); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ object: 'list', data: [{ id: 'file-x', object: 'file', bytes: 5, filename: 'a.png', status: 'success' }] })); }
+      const fileId = p.match(/^\/files\/([^/]+)$/);
+      if (fileId) { rec(req.method === 'DELETE' ? 'files.delete' : 'files.get', { id: fileId[1], method: req.method }); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify(req.method === 'DELETE' ? { id: fileId[1], object: 'file', deleted: true } : { id: fileId[1], object: 'file', bytes: 5, filename: 'a.png', status: 'success' })); }
+      const fileContent = p.match(/^\/files\/([^/]+)\/content$/);
+      if (fileContent) { rec('files.content', { id: fileContent[1] }); return res.end(Buffer.from('RAWFILEBYTES')); }
 
       if (p === '/token/count') { rec('token', json()); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ data: { total_tokens: 42 } })); }
 
@@ -62,11 +69,38 @@ function mockServer() {
         return res.end(JSON.stringify({ id: 'x', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: 'hi back' }, finish_reason: 'stop' }], usage: { total_tokens: 3 } }));
       }
 
-      if (p === '/messages') { rec('messages', json()); res.setHeader('content-type', 'text/event-stream'); res.write('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"pong"}}\n\n'); res.write('event: message_stop\ndata: {"type":"message_stop"}\n\n'); return res.end(); }
+      if (p === '/messages') {
+        const b = json(); rec('messages', b);
+        res.setHeader('content-type', 'text/event-stream');
+        if (b && b.model === 'toolcall') {
+          // tool_use block: start (id+name), two input_json_delta fragments, stop.
+          res.write('event: content_block_start\ndata: ' + JSON.stringify({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_1', name: 'get_weather', input: {} } }) + '\n\n');
+          res.write('event: content_block_delta\ndata: ' + JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '{"city":' } }) + '\n\n');
+          res.write('event: content_block_delta\ndata: ' + JSON.stringify({ type: 'content_block_delta', index: 0, delta: { type: 'input_json_delta', partial_json: '"Beijing"}' } }) + '\n\n');
+          res.write('event: content_block_stop\ndata: ' + JSON.stringify({ type: 'content_block_stop', index: 0 }) + '\n\n');
+          res.write('event: message_stop\ndata: ' + JSON.stringify({ type: 'message_stop' }) + '\n\n');
+          return res.end();
+        }
+        res.write('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"pong"}}\n\n');
+        res.write('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+        return res.end();
+      }
 
-      if (p === '/responses') { rec('responses', json()); res.setHeader('content-type', 'text/event-stream'); res.write('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"ok"}\n\n'); res.write('event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","usage":{"total_tokens":2}}}\n\n'); return res.end(); }
+      if (p === '/responses') {
+        const b = json(); rec('responses', b);
+        res.setHeader('content-type', 'text/event-stream');
+        if (b && b.model === 'toolcall') {
+          // Completed response carrying a function_call output item.
+          res.write('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [{ type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'get_weather', arguments: '{"city":"Beijing"}' }], usage: { total_tokens: 2 } } }) + '\n\n');
+          return res.end();
+        }
+        res.write('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"ok"}\n\n');
+        res.write('event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed","usage":{"total_tokens":2}}}\n\n');
+        return res.end();
+      }
 
       if (p === '/images/generations') { rec('image', json()); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ created: 1, data: [{ b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', seed: 1, finish_reason: 'success' }] })); }
+      if (p === '/images/edits') { rec('image.edit', { multipart: ct.includes('multipart/form-data') }); res.setHeader('content-type', 'application/json'); return res.end(JSON.stringify({ created: 1, data: [{ b64_json: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', seed: 2, finish_reason: 'success' }] })); }
 
       if (p === '/audio/speech') {
         const b = json();
@@ -98,7 +132,7 @@ test.before(() => new Promise((resolve) => {
 }));
 test.after(() => server.close());
 
-test('models.list / models.get → management base', async () => {
+test('models.list → management base', async () => {
   const list = await api.models.listModels(config);
   assert.equal(list.data[0].id, 'step-3.7-flash');
   assert.equal(seen.models.method, 'GET');
@@ -175,4 +209,52 @@ test('audio.synthesize SSE concatenates chunks', async () => {
 test('audio.transcribe parses ASR SSE', async () => {
   const r = await api.audio.transcribe(config, { dataB64: 'AAAA', model: 'stepaudio-2.5-asr', formatType: 'wav' });
   assert.equal(r.text, 'hello');
+});
+
+test('models.get → /models/{id}', async () => {
+  const m = await api.models.getModel(config, 'step-3.7-flash');
+  assert.equal(m.id, 'step-3.7-flash');
+  assert.equal(seen['models.get'].id, 'step-3.7-flash');
+});
+
+test('files.list encodes query; files.get / delete / content', async () => {
+  const list = await api.files.listFiles(config, { limit: 5, order: 'desc' });
+  assert.equal(list.object, 'list');
+  assert.equal(list.data[0].id, 'file-x');
+  assert.equal(seen['files.list'].limit, '5');
+  assert.equal(seen['files.list'].order, 'desc');
+
+  const got = await api.files.getFile(config, 'file-x');
+  assert.equal(got.id, 'file-x');
+  assert.equal(seen['files.get'].method, 'GET');
+
+  const del = await api.files.deleteFile(config, 'file-x');
+  assert.equal(del.deleted, true);
+  assert.equal(seen['files.delete'].method, 'DELETE');
+
+  const contentRes = await api.files.getFileContent(config, 'file-x');
+  assert.equal(Buffer.from(await contentRes.arrayBuffer()).toString(), 'RAWFILEBYTES');
+});
+
+test('image.editImage sends multipart', async () => {
+  const f = path.join(TMP, 'edit.png');
+  fs.writeFileSync(f, Buffer.from('iVBORw0KGgo', 'base64'));
+  const r = await api.image.editImage(config, { model: 'step-image-edit-2', imagePath: f, prompt: 'x' });
+  assert.ok(r.data[0].b64_json.startsWith('iVBOR'));
+  assert.equal(seen['image.edit'].multipart, true);
+});
+
+test('messages.streamMessages parses tool_use', async () => {
+  const r = await api.chat.streamMessages(config, { model: 'toolcall', messages: [] });
+  assert.equal(r.toolCalls.length, 1);
+  assert.equal(r.toolCalls[0].id, 'toolu_1');
+  assert.equal(r.toolCalls[0].name, 'get_weather');
+  assert.deepEqual(r.toolCalls[0].input, { city: 'Beijing' });
+});
+
+test('responses.streamResponses parses function_call', async () => {
+  const r = await api.chat.streamResponses(config, { model: 'toolcall', input: 'x' });
+  assert.equal(r.toolCalls.length, 1);
+  assert.equal(r.toolCalls[0].name, 'get_weather');
+  assert.equal(r.toolCalls[0].arguments, '{"city":"Beijing"}');
 });

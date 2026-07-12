@@ -40,7 +40,8 @@ It implements **only StepFun's real, documented API** (verified against `platfor
 - Text mode: human-friendly tables/lines; reasoning and usage to stderr.
 - JSON mode: valid JSON on stdout (auto when piped). Streaming commands buffer and emit structured JSON in JSON mode, print deltas live in text mode.
 - `--dry-run`: prints `{method, path, body}` and exits 0 without network.
-- Binary (image/audio): raw bytes to stdout unless `--out`/`--out-dir`.
+- Audio (TTS): raw bytes to stdout unless `--out`.
+- Images: never written raw to stdout. With `--out`/`--out-dir` they are saved to disk; otherwise a URL/base64 summary (text mode) or the raw response JSON (json mode).
 
 ## 7. Out of scope (v1)
 
