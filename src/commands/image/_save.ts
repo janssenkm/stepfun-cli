@@ -11,6 +11,14 @@ function extFromUrl(url: string): string {
   return m ? m[1]!.toLowerCase() : 'png';
 }
 
+// When --out is given alongside a multi-image response, disambiguate results
+// after the first so they don't all clobber the same path.
+function resolveOut(out: string, index: number): string {
+  if (index === 0) return out;
+  const dot = out.lastIndexOf('.');
+  return dot > 0 ? `${out.slice(0, dot)}-${index + 1}${out.slice(dot)}` : `${out}-${index + 1}`;
+}
+
 export interface SaveOpts {
   out?: string; // exact path
   outDir?: string; // directory
@@ -26,7 +34,7 @@ export async function saveImage(
   if (item.b64_json) {
     const ext = 'png';
     const path = opts.out
-      ? opts.out
+      ? resolveOut(opts.out, index)
       : join(opts.outDir ?? '.', `${opts.outPrefix ?? 'image'}-${index + 1}.${ext}`);
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, Buffer.from(item.b64_json, 'base64'));
@@ -37,7 +45,7 @@ export async function saveImage(
     // Download the CDN URL (valid ~2h per docs).
     const ext = opts.out ? extname(opts.out).slice(1) || extFromUrl(item.url) : extFromUrl(item.url);
     const path = opts.out
-      ? opts.out
+      ? resolveOut(opts.out, index)
       : join(opts.outDir ?? '.', `${opts.outPrefix ?? 'image'}-${index + 1}.${ext}`);
     const res = await fetch(item.url);
     if (!res.ok) throw new CLIError(`Failed to download image (HTTP ${res.status})`, ExitCode.GENERAL);

@@ -149,6 +149,10 @@ export async function streamMessages(
   let content = '';
   let usage: MessagesResult['usage'];
   let stopReason: string | undefined;
+  // Anthropic streams a tool_use block as: content_block_start (id + name),
+  // then content_block_delta events with input_json_delta (partial_json
+  // fragments). Accumulate by block index so streaming tool calls aren't lost.
+  const toolBlocks = new Map<number, { id: string; name: string; args: string }>();
 
   for await (const ev of parseSSE(res)) {
     if (!ev.data) continue;
@@ -159,11 +163,28 @@ export async function streamMessages(
       continue;
     }
     const type = (json.type as string) || ev.event;
-    if (type === 'content_block_delta') {
+    if (type === 'content_block_start') {
+      const block = json.content_block as Record<string, unknown> | undefined;
+      if (block?.type === 'tool_use') {
+        const idx = (json.index as number) ?? 0;
+        toolBlocks.set(idx, {
+          id: String(block.id ?? ''),
+          name: String(block.name ?? ''),
+          args: '',
+        });
+      }
+    } else if (type === 'content_block_delta') {
       const delta = json.delta as Record<string, unknown> | undefined;
       if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
         content += delta.text;
         h.onContent?.(delta.text);
+      } else if (delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
+        const idx = (json.index as number) ?? 0;
+        const tb = toolBlocks.get(idx);
+        if (tb) {
+          tb.args += delta.partial_json;
+          h.onToolCall?.({ index: idx, id: tb.id, name: tb.name, argumentsDelta: delta.partial_json });
+        }
       }
     } else if (type === 'message_start') {
       usage = (json.message as { usage?: MessagesResult['usage'] })?.usage;
@@ -174,7 +195,22 @@ export async function streamMessages(
       break;
     }
   }
-  return { content, toolCalls: [], usage, stopReason };
+
+  const toolCalls: MessagesResult['toolCalls'] = [...toolBlocks.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([, tb]) => {
+      let input: unknown = tb.args;
+      if (tb.args) {
+        try {
+          input = JSON.parse(tb.args);
+        } catch {
+          /* keep the raw string if the server sends non-JSON */
+        }
+      }
+      return { id: tb.id, name: tb.name, input };
+    });
+
+  return { content, toolCalls, usage, stopReason };
 }
 
 // ---------------- Responses (OpenAI-compatible) ----------------
@@ -182,6 +218,7 @@ export async function streamMessages(
 export interface ResponsesResult {
   content: string;
   reasoning: string;
+  toolCalls: Array<{ id: string; name: string; arguments: string }>;
   status?: string;
   usage?: Record<string, unknown>;
   raw?: unknown;
@@ -197,6 +234,18 @@ function extractResponsesText(output: unknown): string {
     .join('');
 }
 
+// function_call output items: { type:'function_call', call_id, name, arguments(JSON string) }
+function extractResponsesToolCalls(output: unknown): ResponsesResult['toolCalls'] {
+  if (!Array.isArray(output)) return [];
+  return (output as Array<Record<string, unknown>>)
+    .filter((o) => o.type === 'function_call')
+    .map((o) => ({
+      id: String(o.call_id ?? o.id ?? ''),
+      name: String(o.name ?? ''),
+      arguments: String(o.arguments ?? ''),
+    }));
+}
+
 export async function createResponses(config: Config, body: Record<string, unknown>): Promise<ResponsesResult> {
   const data = await requestJson<Record<string, unknown>>(config, {
     url: genUrl(config, '/responses'),
@@ -206,6 +255,7 @@ export async function createResponses(config: Config, body: Record<string, unkno
   return {
     content: extractResponsesText(data.output),
     reasoning: '',
+    toolCalls: extractResponsesToolCalls(data.output),
     status: data.status as string | undefined,
     usage: data.usage as Record<string, unknown> | undefined,
     raw: data,
@@ -228,6 +278,7 @@ export async function streamResponses(
   let reasoning = '';
   let usage: Record<string, unknown> | undefined;
   let status: string | undefined;
+  let completedOutput: unknown;
 
   for await (const ev of parseSSE(res)) {
     if (!ev.data) continue;
@@ -248,13 +299,14 @@ export async function streamResponses(
       const resp = json.response as Record<string, unknown> | undefined;
       status = resp?.status as string | undefined;
       usage = resp?.usage as Record<string, unknown> | undefined;
+      completedOutput = resp?.output;
     } else if (type === 'response.failed' || type === 'error') {
       const msg = (json.error as { message?: string })?.message || JSON.stringify(json);
       // Defer throwing until after the stream closes; surface as error via throw.
       throw new Error(`Responses stream failed: ${msg}`);
     }
   }
-  return { content, reasoning, status, usage };
+  return { content, reasoning, toolCalls: extractResponsesToolCalls(completedOutput), status, usage };
 }
 
 // Re-export for command convenience.

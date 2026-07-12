@@ -49,6 +49,7 @@ export default defineCommand({
     if (stream && config.output === 'text') {
       const result = await streamMessages(config, body, { onContent: (d) => process.stdout.write(d) });
       process.stdout.write('\n');
+      if (result.toolCalls.length) process.stdout.write('\n' + JSON.stringify(result.toolCalls, null, 2) + '\n');
       const u = formatUsageLine(result.usage);
       if (u) process.stderr.write(dim(u + '\n'));
       return;
