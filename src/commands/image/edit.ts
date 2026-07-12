@@ -5,6 +5,7 @@ import { ensureFileExists } from '../../utils/fs';
 import { emitImages } from './_save';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
+import { maxLength, numberRange, oneOf, mutuallyExclusive } from '../../utils/validation';
 
 export default defineCommand({
   name: 'image edit',
@@ -35,6 +36,12 @@ export default defineCommand({
 
     const model = (flags.model as string | undefined) || config.defaultImageModel || 'step-image-edit-2';
     const responseFormat = (flags.responseFormat as string | undefined) || 'b64_json';
+    maxLength('--prompt', prompt, 512);
+    maxLength('--negative-prompt', flags.negativePrompt as string | undefined, 512);
+    oneOf('--response-format', responseFormat, ['b64_json', 'url']);
+    numberRange('--steps', flags.steps as number | undefined, 1, 50, true);
+    numberRange('--cfg-scale', flags.cfgScale as number | undefined, 1, 10);
+    mutuallyExclusive('--out', flags.out, '--out-dir', flags.outDir);
 
     if (dryRun(config, { method: 'POST', path: '/images/edits', multipart: true, request: { image: imagePath, prompt, model } })) return;
 

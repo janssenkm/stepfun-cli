@@ -7,6 +7,7 @@ import { dryRun } from '../../output/formatter';
 import { parseTools, formatUsageLine, dim } from './_shared';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
+import { mutuallyExclusive, numberRange, oneOf } from '../../utils/validation';
 
 function loadJsonSchema(ref: string): { name: string; schema: unknown } {
   if (!existsSync(ref)) throw new CLIError(`--json-schema file not found: ${ref}`, ExitCode.USAGE);
@@ -46,6 +47,12 @@ export default defineCommand({
   async run(config, flags) {
     const model = (flags.model as string | undefined) || config.defaultTextModel || 'step-3.7-flash';
     const showReasoning = !!flags.showReasoning;
+    mutuallyExclusive('--input', flags.input, '--message/--messages-file', flags.message ?? flags.messagesFile);
+    numberRange('--max-output-tokens', flags.maxOutputTokens as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);
+    numberRange('--temperature', flags.temperature as number | undefined, 0, 2);
+    numberRange('--top-p', flags.topP as number | undefined, 0, 1);
+    if (flags.effort) oneOf('--effort', flags.effort as string, ['low', 'medium', 'high']);
+    if (flags.toolChoice) oneOf('--tool-choice', flags.toolChoice as string, ['auto']);
 
     let input: unknown;
     if (flags.input) {

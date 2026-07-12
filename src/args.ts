@@ -1,5 +1,7 @@
 import type { GlobalFlags } from './types/flags';
 import type { OptionDef } from './command';
+import { CLIError } from './errors/base';
+import { ExitCode } from './errors/codes';
 
 function kebabToCamel(str: string): string {
   return str.replace(/-([a-z])/g, (_, c: string) => c.toUpperCase());
@@ -19,23 +21,26 @@ function isBooleanDef(def: OptionDef): boolean {
 }
 
 interface FlagSchema {
+  known: Set<string>;
   booleans: Set<string>;
   numbers: Set<string>;
   arrays: Set<string>;
 }
 
 function buildSchema(options: OptionDef[]): FlagSchema {
+  const known = new Set<string>();
   const booleans = new Set<string>();
   const numbers = new Set<string>();
   const arrays = new Set<string>();
   for (const opt of options) {
     const key = flagKey(opt);
     if (!key) continue;
+    known.add(key);
     if (isBooleanDef(opt)) booleans.add(key);
     else if (opt.type === 'number') numbers.add(key);
     else if (opt.type === 'array') arrays.add(key);
   }
-  return { booleans, numbers, arrays };
+  return { known, booleans, numbers, arrays };
 }
 
 /**
@@ -112,7 +117,14 @@ export function parseFlags(argv: string[], options: OptionDef[]): GlobalFlags {
 
       const camelKey = kebabToCamel(key);
 
+      if (!schema.known.has(camelKey)) {
+        throw new CLIError(`Unknown flag --${key}.`, ExitCode.USAGE);
+      }
+
       if (schema.booleans.has(camelKey)) {
+        if (value !== undefined) {
+          throw new CLIError(`Boolean flag --${key} does not take a value.`, ExitCode.USAGE);
+        }
         (flags as Record<string, unknown>)[camelKey] = true;
         i++;
         continue;
@@ -123,7 +135,9 @@ export function parseFlags(argv: string[], options: OptionDef[]): GlobalFlags {
         value = argv[i];
       }
 
-      if (value === undefined) throw new Error(`Flag --${key} requires a value.`);
+      if (value === undefined || value.startsWith('--')) {
+        throw new CLIError(`Flag --${key} requires a value.`, ExitCode.USAGE);
+      }
 
       if (schema.arrays.has(camelKey)) {
         const arr = (flags as Record<string, unknown>)[camelKey] as string[] | undefined;
@@ -132,7 +146,10 @@ export function parseFlags(argv: string[], options: OptionDef[]): GlobalFlags {
       } else if (schema.numbers.has(camelKey)) {
         const numericValue = Number(value);
         if (value.trim() === '' || !Number.isFinite(numericValue)) {
-          throw new Error(`Flag --${key} requires a numeric value, got "${value}".`);
+          throw new CLIError(
+            `Flag --${key} requires a numeric value, got "${value}".`,
+            ExitCode.USAGE,
+          );
         }
         (flags as Record<string, unknown>)[camelKey] = numericValue;
       } else {

@@ -1,6 +1,7 @@
 import { defineCommand } from '../../command';
 import { listFiles } from '../../api/files';
 import { formatOutput } from '../../output/formatter';
+import { mutuallyExclusive, numberRange, oneOf } from '../../utils/validation';
 
 export default defineCommand({
   name: 'file list',
@@ -14,6 +15,9 @@ export default defineCommand({
   ],
   apiDocs: '/docs/en/api-reference/files/list',
   async run(config, flags) {
+    numberRange('--limit', flags.limit as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);
+    if (flags.order) oneOf('--order', flags.order as string, ['asc', 'desc']);
+    mutuallyExclusive('--before', flags.before, '--after', flags.after);
     const { data } = await listFiles(config, {
       limit: flags.limit as number | undefined,
       order: flags.order as 'asc' | 'desc' | undefined,

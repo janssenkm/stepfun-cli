@@ -6,6 +6,7 @@ import { readStdin, saveBytes } from '../../utils/fs';
 import { readFileSync } from 'fs';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
+import { maxLength, mutuallyExclusive, numberRange, oneOf } from '../../utils/validation';
 
 function parseVoiceLabel(raw: string): Record<string, string> {
   const idx = raw.indexOf(':');
@@ -48,9 +49,21 @@ export default defineCommand({
       text = flags.textFile === '-' ? await readStdin() : readFileSync(flags.textFile as string, 'utf-8');
     }
     if (!text) throw new CLIError('--text or --text-file is required.', ExitCode.USAGE);
+    mutuallyExclusive('--text', flags.text, '--text-file', flags.textFile);
 
     const voice = (flags.voice as string | undefined) || 'lively-girl';
     const format = (flags.format as string | undefined) || 'mp3';
+    maxLength('--text', text, 1000);
+    maxLength('--instruction', flags.instruction as string | undefined, 200);
+    oneOf('--format', format, ['wav', 'mp3', 'flac', 'opus', 'pcm']);
+    numberRange('--speed', flags.speed as number | undefined, 0.5, 2);
+    numberRange('--volume', flags.volume as number | undefined, 0.1, 2);
+    if (flags.sampleRate !== undefined) {
+      const rate = flags.sampleRate as number;
+      if (![8000, 16000, 22050, 24000, 48000].includes(rate)) {
+        throw new CLIError('--sample-rate must be one of: 8000, 16000, 22050, 24000, 48000.', ExitCode.USAGE);
+      }
+    }
 
     const opts: SpeechOpts = {
       model,

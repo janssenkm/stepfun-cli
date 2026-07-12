@@ -73,6 +73,9 @@ export function loadConfig(flags: GlobalFlags): Config {
   const validEnvTimeout =
     envTimeout !== undefined && Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : undefined;
   const timeout = flags.timeout ?? validEnvTimeout ?? file.timeout ?? DEFAULTS.timeout;
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    throw new CLIError('--timeout must be a positive number.', ExitCode.USAGE);
+  }
 
   return {
     apiKey,

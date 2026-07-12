@@ -24,6 +24,9 @@ export default defineCommand({
     if (!file && !url) {
       throw new CLIError('Either --file or --url is required.', ExitCode.USAGE);
     }
+    if (file && url) {
+      throw new CLIError('Pass either --file or --url, not both.', ExitCode.USAGE);
+    }
     if (file) ensureFileExists(file, 'file');
 
     const request = file

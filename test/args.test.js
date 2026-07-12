@@ -47,3 +47,50 @@ test('parseFlags throws on non-numeric number flag', () => {
     /numeric/,
   );
 });
+
+test('parseFlags rejects unknown flags', () => {
+  assert.throws(
+    () => parseFlags(['--modle', 'step-3.7-flash'], [{ flag: '--model <id>' }]),
+    /Unknown flag --modle/,
+  );
+});
+
+test('parseFlags does not consume the next flag as a missing value', () => {
+  assert.throws(
+    () => parseFlags(['--model', '--stream'], [
+      { flag: '--model <id>' },
+      { flag: '--stream', description: 'bool' },
+    ]),
+    /Flag --model requires a value/,
+  );
+});
+
+test('parseFlags accepts negative and zero numeric values for command validation', () => {
+  const opts = [{ flag: '--temperature <n>', type: 'number' }];
+  assert.equal(parseFlags(['--temperature', '-0.5'], opts).temperature, -0.5);
+  assert.equal(parseFlags(['--temperature=0'], opts).temperature, 0);
+});
+
+test('parseFlags keeps the last repeated scalar and accumulates repeated arrays', () => {
+  const flags = parseFlags(
+    ['--model', 'first', '--model', 'second', '--tag=a', '--tag', 'b'],
+    [{ flag: '--model <id>' }, { flag: '--tag <value>', type: 'array' }],
+  );
+  assert.equal(flags.model, 'second');
+  assert.deepEqual(flags.tag, ['a', 'b']);
+});
+
+test('parseFlags preserves empty equals strings but rejects them for numbers', () => {
+  assert.equal(parseFlags(['--label='], [{ flag: '--label <text>' }]).label, '');
+  assert.throws(
+    () => parseFlags(['--count='], [{ flag: '--count <n>', type: 'number' }]),
+    /numeric/,
+  );
+});
+
+test('parseFlags rejects values attached to boolean flags', () => {
+  assert.throws(
+    () => parseFlags(['--stream=false'], [{ flag: '--stream', description: 'bool' }]),
+    /does not take a value/,
+  );
+});

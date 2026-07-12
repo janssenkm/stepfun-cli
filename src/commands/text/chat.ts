@@ -5,6 +5,7 @@ import { dryRun } from '../../output/formatter';
 import { parseTools, formatUsageLine, dim } from './_shared';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
+import { numberRange, oneOf } from '../../utils/validation';
 
 export default defineCommand({
   name: 'text chat',
@@ -39,6 +40,14 @@ export default defineCommand({
   async run(config, flags) {
     const model = (flags.model as string | undefined) || config.defaultTextModel;
     if (!model) throw new CLIError('--model is required.', ExitCode.USAGE);
+    numberRange('--max-tokens', flags.maxTokens as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);
+    numberRange('--temperature', flags.temperature as number | undefined, 0, 2);
+    numberRange('--top-p', flags.topP as number | undefined, 0, 1);
+    numberRange('--n', flags.n as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);
+    numberRange('--frequency-penalty', flags.frequencyPenalty as number | undefined, 0, 1);
+    if (flags.responseFormat) oneOf('--response-format', flags.responseFormat as string, ['text', 'json_object']);
+    if (flags.reasoningEffort) oneOf('--reasoning-effort', flags.reasoningEffort as string, ['low', 'medium', 'high']);
+    if (flags.reasoningFormat) oneOf('--reasoning-format', flags.reasoningFormat as string, ['general', 'deepseek-style']);
 
     const { system, messages } = await buildConversation(flags);
     const body: Record<string, unknown> = {

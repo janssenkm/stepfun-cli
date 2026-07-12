@@ -5,6 +5,7 @@ import { readFileBytes, describeFile, ensureFileExists } from '../../utils/fs';
 import { asrFormatTypeForExt } from '../../utils/mime';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
+import { numberRange, oneOf } from '../../utils/validation';
 
 export default defineCommand({
   name: 'speech recognize',
@@ -32,6 +33,10 @@ export default defineCommand({
     const model = (flags.model as string | undefined) || config.defaultSpeechAsrModel || 'stepaudio-2.5-asr';
     const { ext } = describeFile(file);
     const formatType = (flags.formatType as string | undefined) || asrFormatTypeForExt(ext);
+    oneOf('--format-type', formatType, ['ogg', 'mp3', 'wav', 'pcm']);
+    numberRange('--rate', flags.rate as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);
+    numberRange('--bits', flags.bits as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);
+    numberRange('--channel', flags.channel as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);
 
     if (formatType === 'pcm') {
       if (flags.rate === undefined || flags.bits === undefined || flags.channel === undefined) {

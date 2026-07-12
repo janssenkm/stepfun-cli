@@ -5,6 +5,7 @@ import { dryRun } from '../../output/formatter';
 import { parseTools, formatUsageLine, dim } from './_shared';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
+import { numberRange, oneOf } from '../../utils/validation';
 
 export default defineCommand({
   name: 'text messages',
@@ -31,6 +32,11 @@ export default defineCommand({
     const model = (flags.model as string | undefined) || config.defaultTextModel || 'step-3.7-flash';
     const maxTokens = (flags.maxTokens as number | undefined) ?? 1024;
     if (!maxTokens || maxTokens <= 0) throw new CLIError('--max-tokens must be > 0.', ExitCode.USAGE);
+    numberRange('--max-tokens', maxTokens, 1, Number.MAX_SAFE_INTEGER, true);
+    numberRange('--temperature', flags.temperature as number | undefined, 0, 2);
+    numberRange('--top-p', flags.topP as number | undefined, 0, 1);
+    numberRange('--top-k', flags.topK as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);
+    if (flags.effort) oneOf('--effort', flags.effort as string, ['low', 'medium', 'high']);
 
     const { system, messages } = await buildConversation(flags);
     const body: Record<string, unknown> = { model, max_tokens: maxTokens, messages };

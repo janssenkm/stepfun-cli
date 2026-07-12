@@ -1,5 +1,5 @@
 import { mkdir, writeFile } from 'fs/promises';
-import { dirname, join, extname } from 'path';
+import { dirname, join, extname, basename } from 'path';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
 import type { ImageData, ImageResponse } from '../../api/image';
@@ -15,8 +15,9 @@ function extFromUrl(url: string): string {
 // after the first so they don't all clobber the same path.
 function resolveOut(out: string, index: number): string {
   if (index === 0) return out;
-  const dot = out.lastIndexOf('.');
-  return dot > 0 ? `${out.slice(0, dot)}-${index + 1}${out.slice(dot)}` : `${out}-${index + 1}`;
+  const ext = extname(out);
+  const stem = ext ? basename(out, ext) : basename(out);
+  return join(dirname(out), `${stem}-${index + 1}${ext}`);
 }
 
 export interface SaveOpts {
