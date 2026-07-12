@@ -1,42 +1,33 @@
+// StepPlan has a dedicated generation base (/step_plan/v1) billed against the
+// subscription, while platform-management endpoints (accounts, files, model
+// metadata, system voices) only resolve on the public /v1 base — both accept
+// the same API key. This split was confirmed by real probes against the API.
 export type Region = 'StepPlan-Global' | 'StepPlan-CN';
-export type Geography = 'Global' | 'CN';
 
 export interface RegionProfile {
   region: Region;
-  baseUrl: string;
-  geography: Geography;
-  supportsNonChat: boolean;
+  genBase: string; // generation (StepPlan subscription billing)
+  apiBase: string; // management (open platform, public /v1)
+  docsHost: string;
 }
 
-/** Canonical StepPlan regions supported by the CLI. */
-export const REGION_PROFILES: Record<Region, RegionProfile> = {
+export const REGIONS: Record<Region, RegionProfile> = {
   'StepPlan-Global': {
     region: 'StepPlan-Global',
-    baseUrl: 'https://api.stepfun.ai/step_plan/v1',
-    geography: 'Global',
-    supportsNonChat: false
+    genBase: 'https://api.stepfun.ai/step_plan/v1',
+    apiBase: 'https://api.stepfun.ai/v1',
+    docsHost: 'https://platform.stepfun.ai',
   },
   'StepPlan-CN': {
     region: 'StepPlan-CN',
-    baseUrl: 'https://api.stepfun.com/step_plan/v1',
-    geography: 'CN',
-    supportsNonChat: false
-  }
+    genBase: 'https://api.stepfun.com/step_plan/v1',
+    apiBase: 'https://api.stepfun.com/v1',
+    docsHost: 'https://platform.stepfun.com',
+  },
 };
 
-const REGION_ALIASES: Record<string, Region> = {
-  global: 'StepPlan-Global',
-  'stepplan-global': 'StepPlan-Global',
-  'stepfun-global': 'StepPlan-Global',
-  cn: 'StepPlan-CN',
-  'stepplan-cn': 'StepPlan-CN'
-};
+export const DEFAULT_REGION: Region = 'StepPlan-Global';
 
-/** Resolves canonical names and case-insensitive short aliases. */
-export function normalizeRegion(value: string): Region | undefined {
-  return REGION_ALIASES[value.trim().toLowerCase()];
-}
-
-export function regionChoices(): string {
-  return 'StepPlan-Global (Global), StepPlan-CN (CN)';
+export function isValidRegion(value: string): value is Region {
+  return value in REGIONS;
 }

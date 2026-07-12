@@ -1,528 +1,156 @@
-# StepFun CLI
+# stepfun
 
 [English](README.md)
 
-`StepFun-CLI` 是用于在终端调用阶跃星辰（StepFun）模型能力的命令行工具。NPM 包名为 `@stepfun-ai/cli`，全局命令为 `stepfun`。
+阶跃星辰（[StepFun](https://platform.stepfun.com)）**StepPlan** 订阅的命令行工具——在终端或 Agent 中调用对话、图像、语音、文件与账户能力。
 
-当前支持：
-
-- 文本生成：`step-3.5-flash`、`step-3.5-flash-2603`、`step-3.7-flash`
-- 语音合成：`stepaudio-2.5-tts`
-- 语音识别：`stepaudio-2.5-asr`
-- 图像编辑：`step-image-edit-2`
-
-完整 Resource 树还包含未来能力的可发现命令。`--help` 中标记为 `(unsupported)` 的命令会以退出码 2 返回结构化 `UNSUPPORTED` 错误，且不会调用 API。详细契约见 [docs/resources](docs/resources)。
+`stepfun` 面向 StepPlan（Global + CN 两站）。生成类请求（对话 / 语音 / 图像 / token 计数）通过 `/step_plan/v1` 基址按订阅计费；管理类请求（模型 / 文件 / 账户 / 系统音色）使用公共 `/v1` 基址——两个基址接受同一个 API Key。
 
 ## 安装
 
-StepFun-CLI 采用 NPM-first 发布模式。推荐通过 NPM 全局安装；运行环境需要 Node.js 18 或更高版本：
-
 ```bash
 npm install -g @stepfun-ai/cli
-stepfun --version
-```
-
-首次使用的最短流程：
-
-```bash
-stepfun auth login
-stepfun auth status
-stepfun text chat --message "用一句话介绍阶跃星辰"
-```
-
-在 CI 或其他非交互环境中，建议通过环境变量注入密钥，并显式指定输出格式：
-
-```bash
-export STEPFUN_API_KEY="YOUR_API_KEY"
-stepfun --region Global --output json text chat --message "返回一句问候"
-```
-
-如需在没有 Node.js/npm 的环境运行，也可以从项目 Release 获取可选的独立二进制附件：Linux 为 `bin/linux/x64/stepfun`，macOS 为 `bin/macos/x64/stepfun`，Windows 为 `bin/windows/x64/stepfun.exe`。独立二进制不是默认安装路径，且不能通过 `stepfun update` 自升级。
-
-## Region 与 API 地址
-
-Region 使用下列 canonical 标识符，也可使用简称：
-
-| Region | 简称 | 使用场景 | Base URL |
-| --- | --- | --- | --- |
-| `StepPlan-Global` | `Global` | 国际版（stepfun.ai）StepPlan | `https://api.stepfun.ai/step_plan/v1` |
-| `StepPlan-CN` | `CN` | 国内版（stepfun.com）StepPlan | `https://api.stepfun.com/step_plan/v1` |
-
-兼容输入 `StepFun-Global`，会规范化为 `StepPlan-Global`。存在 API Key 但没有配置 Region 和自定义 Base URL 时，CLI 会同时探测 Global/CN 端点，并分别尝试 Bearer 与 `x-api-key` 鉴权；成功后将 canonical Region 缓存到配置文件。全部失败时回退并缓存 `StepPlan-Global`。`auth login` 仍要求用户手动选择区域。
-
-运行时配置统一按 `flag > 环境变量 > 配置文件 > 默认值` 解析：
-
-1. API Key：`--api-key` > `STEPFUN_API_KEY` > `~/.stepfun-cli/config.json` 中的 `apiKey`。
-2. Region：`--region` > `STEPFUN_REGION` > 配置文件中的 `region` > 自动探测 > `StepPlan-Global` 回退。
-3. Base URL：`--base-url` > `STEPFUN_BASE_URL` > 配置文件中的 `baseUrl` > 当前 Region 对应的 URL。
-4. 输出格式：`--output` > `STEPFUN_OUTPUT` > 配置文件中的 `output` > stdout 是终端时为 `text`，否则为 `json`（便于在 CI、管道、脚本中用 JSON 处理）。
-5. 超时：`--timeout` > `STEPFUN_TIMEOUT` > 配置文件中的 `timeout` > `300` 秒。
-
-> 注意：自本版本起，**环境变量优先级高于配置文件**（此前版本是配置文件优先）。若同时配置了二者，环境变量的值会生效。
-
-`--base-url` 用于自定义 API 地址（如兼容服务、本地调试或测试环境），它会绕过 Region 的 URL 映射。请确认自定义地址与所用套餐及网络区域匹配。
-
-## 模型差异说明（国内版 stepfun.com / 国际版 stepfun.ai）
-
-国内版（stepfun.com）与国际版（stepfun.ai）官方文档在个别模型上存在差异，CLI 默认与文档以国际版列出的模型名为准：
-
-- **图像编辑**：CLI 默认使用 `step-image-edit-2`（输入图片最大 4096×4096，官方文档未声明最小尺寸），国际版与国内版均列出此模型。国内版文档另列出 `step-1x-edit`（另一图像编辑模型），其尺寸约束不同：最小 64px、最大 1728px、像素面积 ≤ 1024×1024；**国际版（stepfun.ai）文档未列出 `step-1x-edit`**。CLI 不内置 `step-1x-edit`，如需使用可通过 `--model step-1x-edit` 显式指定（仅在国内版 Region 可用）。
-- **语音识别**：CLI 默认使用 `stepaudio-2.5-asr`（国际版文档列出）。国际版文档提到的 `step-asr-1.1-stream` 是 `stepaudio-2.5-asr` 的向后兼容别名，当前二者等同。国内版 ASR 文档另列出 `stepaudio-2-asr-pro`；CLI 未内置该模型，需要时可通过 `--model` 显式指定。
-
-## 认证与配置
-
-推荐使用交互式登录。命令会显示 Global 和 CN 两个 Region，由用户手动选择，再以隐藏输入方式读取 API Key：
-
-```bash
-stepfun auth login
-stepfun auth status
-```
-
-也可以非交互配置：
-
-```bash
-stepfun config set region StepPlan-CN
-stepfun config set api_key "YOUR_API_KEY"
-stepfun config set --key timeout --value 300
-stepfun config show
-stepfun config export-schema --command "text chat"
-```
-
-`config export-schema` 从运行时解析和帮助共用的命令定义中生成 OpenAI-compatible function tool JSON。省略 `--command` 时导出全部叶子命令。
-
-清除已保存的凭据与配置：
-
-```bash
-stepfun auth logout
-stepfun auth logout --yes   # 跳过确认，常用于脚本
-```
-
-`auth logout` 会清空 `~/.stepfun-cli/config.json` 中的 `apiKey`、`region`、`baseUrl`、`output`、`timeout` 以及默认模型等字段。默认会弹出确认提示，加 `--yes` 可直接执行；配合 `--non-interactive` 时必须传 `--yes`，否则报错退出。
-
-设置自定义 API 地址：
-
-```bash
-stepfun config set base_url "https://custom.example.com/v1"
-```
-
-`config set <key> <value>` 支持的全部键：
-
-| 键 | 说明 | 等价配置字段 |
-| --- | --- | --- |
-| `api_key` | API Key | `apiKey` |
-| `base_url` | 自定义 API 地址 | `baseUrl` |
-| `region` | Region 标识符 | `region`（并清除 `baseUrl`） |
-| `output` | 默认输出格式（`text` / `json`） | `output` |
-| `timeout` | HTTP 请求超时（秒，必须为正数） | `timeout` |
-| `default_text_model` | `text chat` 的默认模型 | `defaultTextModel` |
-| `default_speech_model` | `speech synthesize` 的默认模型 | `defaultSpeechModel` |
-
-设置默认模型后，`text chat` 和 `speech synthesize` 在未传 `-m` / `--model` 时会使用配置中的默认模型，否则回退到内置默认（`step-3.5-flash` 与 `stepaudio-2.5-tts`）：
-
-```bash
-stepfun config set default_text_model step-3.7-flash
-stepfun text chat --message "你好"         # 实际使用 step-3.7-flash
-
-stepfun config set default_speech_model stepaudio-2.5-tts
-stepfun speech synthesize --text "你好"    # 实际使用 stepaudio-2.5-tts
-```
-
-`config show` 会掩码显示 API Key 后输出当前完整配置。该命令始终输出 JSON，并且只展示配置文件内容，不会合并环境变量或命令行参数。要查看一次 API 调用最终采用的认证来源、Region 和 Base URL，请使用 `auth status`。
-
-或者只对单次调用传入认证信息：
-
-```bash
-stepfun --region Global --api-key "YOUR_API_KEY" models list
-```
-
-也可通过环境变量提供密钥：
-
-```bash
-export STEPFUN_API_KEY="YOUR_API_KEY"
-stepfun --region CN auth status
-```
-
-除 API Key 外，CLI 还识别以下环境变量，优先级高于配置文件、低于命令行 flag：
-
-| 环境变量 | 作用 | 等价 flag |
-| --- | --- | --- |
-| `STEPFUN_API_KEY` | API Key | `--api-key` |
-| `STEPFUN_REGION` | Region 标识符 | `--region` |
-| `STEPFUN_BASE_URL` | 自定义 API 地址 | `--base-url` |
-| `STEPFUN_OUTPUT` | 输出格式（`text` / `json`） | `--output` |
-| `STEPFUN_TIMEOUT` | HTTP 请求超时（秒） | `--timeout` |
-
-非交互场景（CI、管道、被其他程序调用）中 stdout 通常不是终端，此时若未显式指定 `--output`，CLI 会自动选择 `json`，方便下游程序解析；在交互终端中则默认 `text`。
-
-配置保存在 `~/.stepfun-cli/config.json`。`auth status` 和 `config show` 会掩码显示 API Key，但文件本身以明文 JSON 保存。不要提交、分享或备份该文件到不受信任的位置；在多用户系统上建议限制文件权限：
-
-```bash
-chmod 700 ~/.stepfun-cli
-chmod 600 ~/.stepfun-cli/config.json
-```
-
-在 CI 中优先使用密钥管理服务注入 `STEPFUN_API_KEY`，不要将密钥写入仓库、脚本参数或构建日志。命令行参数可能出现在 shell 历史和进程列表中。
-
-## 命令
-
-### 更新 CLI
-
-查看当前版本和升级命令：
-
-```bash
-stepfun update
-```
-
-输出示例：
-
-```text
-Current version: 0.1.1
-
-Run:
-  npm update -g @stepfun-ai/cli
-```
-
-该命令不访问 NPM registry，也不会自动修改全局安装；复制输出的命令执行升级。独立可执行文件不能通过 NPM 更新，会提示从项目 Releases 页面下载最新版。
-
-## 已知限制
-
-- **当前不支持 HTTP/HTTPS 代理。** CLI 使用 Node.js 18 原生 `fetch`，不支持代理配置。如有需要，请使用环境级代理设置或本地转发工具。
-
-查看内置帮助和模型列表：
-
-```bash
-stepfun --help
-stepfun models list
-stepfun --output json models list
-```
-
-### 文本对话
-
-```bash
-stepfun text chat \
-  --message "Hello, who are you?" \
-  --model step-3.5-flash
-```
-
-默认模型为 `step-3.5-flash`（未传 `-m` 时按 `--model` > 配置 `default_text_model` > `step-3.5-flash` 解析，可通过 `config set default_text_model` 修改）。需要原始 API 响应时，将全局参数放在子命令之前：
-
-```bash
-stepfun --output json text chat --message "你好" --model step-3.7-flash
-```
-
-可选参数（仅在传入时写入请求体，未传则保持服务端默认）：
-
-| 参数 | 说明 | 对应字段 |
-| --- | --- | --- |
-| `--message <text>` | 消息文本，可重复；可用 `system:`、`user:`、`assistant:` 前缀指定角色 | 追加到 messages |
-| `--system <text>` | 系统消息，置于所有消息最前 | messages 首条 `{role:'system'}` |
-| `--messages-file <path\|->` | 从文件或 stdin（`-`）读取 JSON 数组作为 messages | body.messages |
-| `--temperature <number>` | 采样温度 | body.temperature |
-| `--top-p <number>` | 核采样概率 | body.top_p |
-| `--max-tokens <int>` | 最大生成 token 数 | body.max_tokens |
-| `--reasoning-effort <low\|medium\|high>` | 推理强度 | body.reasoning_effort |
-| `--reasoning-format <format>` | 推理字段格式 | body.reasoning_format |
-| `--stop <text>` | 停止序列，可重复 | body.stop |
-| `--frequency-penalty <number>` | 频率惩罚，范围 0.0 到 1.0 | body.frequency_penalty |
-| `--response-format <text\|json_object>` | 模型响应格式 | body.response_format |
-| `-n, --n <count>` | 返回数量；大于 1 时必须配合 `--output json` | body.n |
-| `--tool <json-or-path>` | 工具定义发现参数；当前返回 `UNSUPPORTED` | 不发送请求 |
-
-`--message` 与 `--messages-file` 至少传一个，否则报错退出。裸消息作为 `user` 消息；带有效角色前缀的消息按对应角色处理。`--message` 可重复，并追加在 `--messages-file` 提供的消息之后；`system:` 消息会覆盖 `--system`。
-
-多轮消息示例：
-
-```bash
-stepfun text chat \
-  --message "user:你好" \
-  --message "assistant:你好，有什么可以帮你？" \
-  --message "介绍一下阶跃星辰"
-```
-
-从 stdin 读取示例：
-
-```bash
-echo '[{"role":"user","content":"hi"}]' | stepfun text chat --messages-file -
-```
-
-消息文件示例（`messages.json`）：
-
-```json
-[
-  { "role": "user", "content": "北京有哪些适合周末参观的博物馆？" },
-  { "role": "assistant", "content": "可以考虑国家博物馆、首都博物馆等。" }
-]
-```
-
-在已有上下文后追加一轮提问：
-
-```bash
-stepfun text chat --messages-file messages.json --message "请按城区分类"
-```
-
-流式输出：当输出格式不是 `--output json` 且 stdout 是终端（TTY）时，`text chat` 默认开启流式，逐 token 打印响应内容直至结束换行。可用 `--stream` 显式开启、`--no-stream` 显式关闭。`--output json` 与流式不兼容（需要完整 JSON 对象），即使传入 `--stream` 也会强制走非流式路径并输出完整响应。流式同样透传 `--temperature`/`--top-p`/`--max-tokens` 等可选参数。
-
-流式响应会分别累积正文、`reasoning_content`、工具调用、结束原因和 usage。文本模式只把正文写入 stdout；检测到推理内容时在 stderr 显示 `Thinking...`，正文开始时显示 `Response:`，不会输出原始推理内容。`--quiet` 会关闭这些状态提示。JSON 模式使用非流式请求并保留服务端完整响应。
-
-### 语音合成
-
-```bash
-stepfun speech synthesize \
-  --text "你好，我是阶跃星辰的大模型。" \
-  --voice cixingnansheng \
-  --out hello.mp3 \
-  --model stepaudio-2.5-tts
-```
-
-默认输出文件为 `output.mp3`。未传 `--voice` 时，国内 Region 兜底音色为 `cixingnansheng`，国际 Region 兜底音色为 `lively-girl`（官方文档未定义服务端默认音色，`lively-girl` 为示例音色）；也可通过 `--voice` 使用官方或已复刻的 Voice ID。另外，使用 `stepaudio-2.5-tts` 时，`--text` 中圆括号 `()` 内的内容会被当作指令默认不发音。
-`speech generate` 是 `speech synthesize` 的别名，参数和行为完全一致。
-
-可选参数（仅在传入时写入请求体，未传则保持服务端默认）：
-
-| 参数 | 说明 | 对应字段 |
-| --- | --- | --- |
-| `--format <wav\|mp3\|flac\|opus\|pcm>` | 响应音频格式 | body.response_format |
-| `--speed <number>` | 语速 | body.speed |
-| `--volume <number>` | 音量 | body.volume |
-| `--sample-rate <number>` | 采样率 | body.sample_rate |
-
-示例：
-
-```bash
-stepfun speech synthesize --text "你好" --voice cixingnansheng --speed 1.2 --format wav --out hello.wav
-```
-
-`speech synthesize --out <file>` 指定音频文件路径；全局 `--output text|json` 控制展示格式，并可放在嵌套命令之前或之后。
-已注册但当前返回 `UNSUPPORTED` 的发现参数包括 `--text-file`、`--pitch`、`--bitrate`、`--channels`、`--language`、`--subtitles`、`--pronunciation` 和 `--stream`。
-
-### 语音识别
-
-```bash
-stepfun speech recognize \
-  --file hello.wav \
-  --model stepaudio-2.5-asr
-```
-
-识别接口支持 `ogg`、`mp3`、`wav` 和 `pcm`。CLI 会按官方 HTTP/SSE 协议发送 Base64 音频并输出最终识别文本；`.pcm` 按 `pcm_s16le`、16 kHz、16 bit、单声道处理。
-
-可选参数（仅在传入时写入请求体，未传则保持服务端默认）：
-
-| 参数 | 说明 | 对应字段 |
-| --- | --- | --- |
-| `--language <code>` | 语言代码，如 `zh`、`en` | audio.input.transcription.language |
-| `--hotwords <a,b,c>` | 逗号分隔的热词列表 | audio.input.transcription.hotwords |
-
-示例：
-
-```bash
-stepfun speech recognize --file hello.wav --language zh --hotwords 阶跃,星辰
-```
-
-输出 JSON：
-
-```bash
-stepfun --output json speech recognize --file hello.wav
-```
-
-JSON 结果包含最终文本和产生该结果的 SSE 事件，例如可用 `jq` 只取文本：
-
-```bash
-stepfun --quiet --output json speech recognize --file hello.wav | jq -r '.text'
-```
-
-### 图像编辑
-
-```bash
-stepfun image edit \
-  --file input.png \
-  --prompt "Make it cyberpunk style" \
-  --model step-image-edit-2
-```
-
-默认请求 `b64_json` 并将 Base64 结果输出到终端；可通过 `--response-format url` 请求 URL 响应。输入图片最大分辨率为 4096×4096（官方文档未声明最小尺寸）。
-
-`b64_json` 可能很长。脚本中建议使用 JSON 输出并解码到文件，或改为请求 URL：
-
-```bash
-stepfun --quiet --output json image edit \
-  --file input.png --prompt "提升清晰度" \
-  | jq -r '.data[0].b64_json' | base64 --decode > edited.png
-
-stepfun --quiet --output json image edit \
-  --file input.png --prompt "提升清晰度" --response-format url \
-  | jq -r '.data[0].url'
-```
-
-可选参数（仅在传入时写入表单，未传则保持服务端默认）：
-
-| 参数 | 说明 | 对应字段 |
-| --- | --- | --- |
-| `--seed <int>` | 随机种子 | seed |
-| `--steps <int>` | 推理步数 | steps |
-| `--cfg-scale <number>` | CFG scale | cfg_scale |
-| `--negative-prompt <text>` | 负向提示词 | negative_prompt |
-| `--out <path>` | 目标文件契约发现参数；当前返回 `UNSUPPORTED` | 不发送请求 |
-
-示例：
-
-```bash
-stepfun image edit \
-  --file input.png \
-  --prompt "cyberpunk style" \
-  --seed 1 --steps 30 --cfg-scale 7 --negative-prompt "blurry"
-```
-
-### 文件管理
-
-文件服务用于保存可复用的多模态资源，以及提取文档的解析文本。
-
-```bash
-stepfun file upload --file report.pdf --purpose file-extract
-stepfun file upload --url https://example.com/image.png --purpose storage
-stepfun file list
-stepfun file get file-abc123
-stepfun file content file-abc123
-stepfun file delete file-abc123 --yes
-```
-
-上传时 `--file` 和 `--url` 必须且只能提供一个。purpose 支持 `file-extract`、`retrieval-text`、`retrieval-image` 和 `storage`。国内 API 文档覆盖四种 purpose；当前国际版上传文档只明确保证 `storage`，在非国内 Region 使用其他 purpose 时 CLI 会给出提示。StepPlan Region 同样会显示端点覆盖风险提示。
-
-本地上传会预先校验格式和大小：
-
-- `file-extract` / `retrieval-text`：常见文本、PDF、Office、CSV、HTML、XML 文件，最大 64 MB。
-- `retrieval-image`：JPG/JPEG、PNG，最大 64 MB。
-- `storage`：MP4、图片、MP3、WAV，最大 128 MB。
-
-`file content` 返回 `purpose=file-extract` 文件的解析文本，并非下载原始文件：
-
-```bash
-stepfun --output text file content file-abc123 > report.txt
-stepfun file content file-abc123 --out report.txt
-```
-
-删除默认要求确认，非交互模式必须传 `--yes`。`--quiet` 下上传仅输出文件 ID，删除输出 `deleted`。
-
-### 全局参数
-
-全局参数可放在 Resource 之前或嵌套 Command 之后，例如 `stepfun speech synthesize --quiet ...`。
-
-| 参数 | 含义 |
-| --- | --- |
-| `--api-key <key>` | 单次调用使用的 API Key |
-| `--region <region>` | 选择 `StepPlan-Global`/`Global` 或 `StepPlan-CN`/`CN` |
-| `--base-url <url>` | 覆盖 Region 对应的 API 地址 |
-| `--output <format>` | 输出格式：`text` 或 `json`；未指定时，stdout 是终端默认 `text`，否则默认 `json` |
-| `--timeout <seconds>` | 单次 HTTP 请求超时秒数（默认 300） |
-| `--dry-run` | 只打印将要发送的请求摘要（命令、HTTP 方法、完整 URL、模型与关键参数）后退出，不要求 API Key，不发起任何网络请求；输出格式随 `--output` 切换，绝不打印 API Key 与文件二进制内容 |
-| `--non-interactive` | 永不弹出交互提示；需要交互的命令（如 `auth login`、未带 `--yes` 的 `auth logout`）会直接报错退出 |
-| `--quiet` | 隐藏非必要进度信息 |
-| `--verbose` | 输出 HTTP 请求与响应元数据，不包含 API Key、请求体、响应体或文件内容 |
-| `--no-color` | 禁用流式推理状态中的 ANSI 颜色 |
-
-`--verbose` 只输出安全诊断元数据，不会打印密钥或二进制内容。
-
-### Dry run 与脚本化调用
-
-`--dry-run` 可用于核对最终 URL、模型和请求参数。它不读取 API Key、不创建 API client，也不发起网络请求：
-
-```bash
-stepfun --dry-run --output json --region Global \
-  text chat --model step-3.7-flash --message "你好"
-
-stepfun --dry-run --output json image edit \
-  --file input.png --prompt "提升清晰度"
-```
-
-文件型命令只在摘要中显示文件路径与字节数；文件不存在时显示路径和错误，不输出文件内容。`--dry-run` 仍会校验 Region、输出格式和命令参数，因此可用于 CI 中的调用契约检查。
-
-各子命令的完整参数以 `--help` 为准：
-
-```bash
-stepfun text chat --help
-stepfun speech synthesize --help
-stepfun speech recognize --help
-stepfun image edit --help
-```
-
-## 退出码与错误处理
-
-CLI 按错误类别返回结构化退出码，便于脚本与 CI 判定失败原因：
-
-| 退出码 | 含义 | 触发场景 |
-| --- | --- | --- |
-| `0` | 成功 | 正常完成 |
-| `1` | 通用 / API 错误 | HTTP 非 2xx（不含 401/403/402/429/408/504/451），如 400 参数错误、500 服务端错误 |
-| `2` | USAGE（参数非法） | 未知 Region、`--temperature`/`--top-p`/`--max-tokens`/`--timeout` 等数值参数为 NaN、`text chat` 既无 `--message` 又无 `--messages-file`、`config set` 未知键、`--non-interactive` 下的 `auth login`/`auth logout` |
-| `3` | AUTH（鉴权） | 缺少 API Key、401、403 |
-| `4` | QUOTA（配额） | HTTP 402 余额不足或 429 频率/资源限制 |
-| `5` | TIMEOUT（超时） | HTTP 408/504 或请求超时 |
-| `6` | NETWORK（网络） | fetch 网络失败、连接拒绝、DNS 解析失败、`--timeout` 触发的 abort |
-| `10` | CONTENT_FILTER（内容审核） | HTTP 451 或内容审核拒绝 |
-
-**文本模式**下错误输出形如：
-
-```
-Error: API key is required. Run `stepfun auth login` or use --api-key
-Hint: Run `stepfun auth login`, set `STEPFUN_API_KEY`, or pass `--api-key`.
-(exit code 3)
-```
-
-**JSON 模式**（`--output json`，或在非交互管道中自动启用）下错误以结构化信封输出到 **stderr**，成功结果仍走 stdout：
-
-```json
-{
-  "error": {
-    "code": "AUTH",
-    "message": "API key is required. Run `stepfun auth login` or use --api-key",
-    "hint": "Run `stepfun auth login`, set `STEPFUN_API_KEY`, or pass `--api-key`."
-  }
-}
-```
-
-`code` 字段取值为可读名字：`OK` / `API_ERROR` / `USAGE` / `AUTH` / `QUOTA` / `TIMEOUT` / `NETWORK` / `CONTENT_FILTER` / `UNSUPPORTED`。
-
-## 开发
-
-需要 Node.js 18 或更高版本；CLI 使用 Node 18 内置的 `fetch`、`FormData` 和 `Blob`，不再引入额外 HTTP/multipart 运行时依赖。
-
-```bash
-git clone https://github.com/janssenkm/stepfun-cli.git
-cd stepfun-cli
-npm install
-npm run build
-```
-
-构建使用 TypeScript 编译器，产物位于 `dist/`。在仓库中直接运行：
-
-```bash
+# 或从源码运行：
+git clone <repo> && cd stepfun-cli && npm install && npm run build
 node dist/index.js --help
 ```
 
-运行测试：
+需要 Node.js ≥ 18（使用原生 `fetch`、`FormData`、`AbortSignal`）。
+
+## 快速开始
 
 ```bash
-npm test
+# 1. 保存 StepPlan API Key（在 https://platform.stepfun.com 获取）
+stepfun auth login --api-key sk-... --region StepPlan-Global
+
+# 2. 检查是否生效
+stepfun auth status
+stepfun models list
+
+# 3. 对话（流式）
+stepfun text chat --model step-3.7-flash --message "你好，阶跃！" --stream
 ```
 
-测试命令会先构建项目，再使用 Node.js 内置测试运行器执行 `test/*.test.js`。端到端测试使用本地模拟 HTTP 服务，不需要真实 API Key。
+## 命令
 
-可选：打包 Windows、Linux 和 macOS 的 Node.js 18 x64 独立可执行文件，用作 Release artifacts。主发布路径仍是 NPM 包；该命令会通过 `npx pkg@5.8.1` 按需下载打包工具：
+| 资源 | 命令 |
+|---|---|
+| **text** | `text chat`（OpenAI Completions）、`text messages`（Anthropic Messages）、`text responses`（OpenAI Responses） |
+| **image** | `image generate`、`image edit` |
+| **speech** | `speech synthesize`（语音合成）、`speech recognize`（语音识别） |
+| **models** | `models list`、`models get <id>` |
+| **file** | `file upload`、`file list`、`file get`、`file content`、`file delete` |
+| **account** | `account show` |
+| **token** | `token count` |
+| **auth** | `auth login`、`auth status`、`auth logout` |
+| **config** | `config show`、`config set` |
+
+任意命令加 `--help` 查看完整选项，例如 `stepfun text chat --help`。各资源 flag 参考：[docs/resources/](docs/resources/)；完整文档索引：[docs/README.md](docs/README.md)。
+
+### 对话
 
 ```bash
-npm run pkg
+# OpenAI 兼容 Completions（流式 + 推理）
+stepfun text chat --model step-3.7-flash --message "计算 (80+20)/5" \
+  --reasoning-effort high --stream
+
+# 多模态（图像输入）
+stepfun text chat --model step-3.7-flash --message "描述这张图" --image photo.jpg
+
+# Anthropic 兼容 Messages
+stepfun text messages --model step-3.7-flash --message "hi" --max-tokens 256
+
+# OpenAI Responses（支持结构化输出）
+stepfun text responses --input "提取情感" --json-schema schema.json --effort high
+
+# 工具调用 / Function Calling
+stepfun text chat --model step-3.7-flash --message "北京天气如何？" \
+  --tool '{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}'
 ```
 
-打包结果写入：
-
-```text
-bin/
-  linux/x64/stepfun
-  macos/x64/stepfun
-  windows/x64/stepfun.exe
-```
-
-这些二进制文件不进入 NPM 包。发布 NPM 包前，`prepublishOnly` 会自动执行构建；也可以先用以下命令检查待发布内容：
+### 图像
 
 ```bash
-npm pack --dry-run
+stepfun image generate --prompt "雪山脚下的宁静湖泊" --out lake.png
+stepfun image edit --image input.png --prompt "改成夜晚" --out night.png
 ```
+
+### 语音
+
+```bash
+stepfun speech synthesize --text "你好，阶跃" --out out.mp3
+stepfun speech synthesize --text "流式合成" --stream --out out.mp3
+stepfun speech recognize --file recording.mp3 --language zh
+```
+
+### 文件与账户
+
+```bash
+stepfun file upload --file image.png
+stepfun file list
+stepfun account show
+stepfun token count --model step-3.7-flash --message "统计这些 token"
+```
+
+## 配置
+
+配置文件位于 `~/.stepfun-cli/config.json`：
+
+```jsonc
+{
+  "apiKey": "sk-...",
+  "region": "StepPlan-Global",          // 或 StepPlan-CN
+  "genBaseUrl": null,                   // 可选覆盖（默认由 region 推导）
+  "apiBaseUrl": null,                   // 可选覆盖
+  "output": "text",                     // text | json
+  "timeout": 120,
+  "defaultTextModel": "step-3.7-flash",
+  "defaultSpeechTtsModel": "stepaudio-2.5-tts",
+  "defaultSpeechAsrModel": "stepaudio-2.5-asr",
+  "defaultImageModel": "step-image-edit-2"
+}
+```
+
+**解析优先级**：命令行 flag > 环境变量（`STEPFUN_API_KEY`、`STEPFUN_REGION`、`STEPFUN_GEN_BASE_URL`、`STEPFUN_API_BASE_URL`、`STEPFUN_OUTPUT`、`STEPFUN_TIMEOUT`）> 配置文件 > 默认值。
+
+## 区域
+
+| 区域 | 生成基址 | 管理基址 |
+|---|---|---|
+| `StepPlan-Global` | `https://api.stepfun.ai/step_plan/v1` | `https://api.stepfun.ai/v1` |
+| `StepPlan-CN` | `https://api.stepfun.com/step_plan/v1` | `https://api.stepfun.com/v1` |
+
+同一个 StepPlan API Key 在两个基址都有效。生成类端点按订阅计费；管理类端点是开放平台通用功能。
+
+## 全局 flag
+
+```
+--api-key <key>          StepFun API Key（覆盖配置）
+--region <region>        StepPlan-Global | StepPlan-CN
+--base-url <url>         覆盖生成（StepPlan）基址
+--api-base-url <url>     覆盖管理（/v1）基址
+--output <format>        text | json（管道时自动 json）
+--timeout <seconds>      请求超时
+--quiet                  抑制非必要输出
+--verbose                打印 HTTP 请求/响应细节
+--dry-run                只打印请求体，不调用 API
+--non-interactive        关闭交互提示（CI/Agent 模式）
+--help, --version
+```
+
+## 退出码
+
+`0` 成功 · `1` 一般错误 · `2` 用法错误 · `3` 鉴权失败 · `4` 配额/限流 · `5` 超时 · `6` 网络 · `10` 内容审核。
+
+## 开发
+
+```bash
+npm run build          # tsc → dist/
+npm test               # 构建 + node --test test/*.test.js
+```
+
+架构参考 `mmx` CLI（`.repos/cli`）：自研 flag 解析器（`src/args.ts`）、命令注册树（`src/registry.ts`），每个资源一个模块（`src/commands/`）。零运行时依赖。详见 [docs/DESIGN.md](docs/DESIGN.md)（或[文档索引](docs/README.md)）。
+
+## License
+
+MIT

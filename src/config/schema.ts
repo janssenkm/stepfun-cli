@@ -1,86 +1,88 @@
-import type { Config } from '../config';
-import { normalizeRegion } from './regions';
+import { DEFAULT_REGION, isValidRegion, type Region } from './regions';
 
-const CONFIG_KEYS = new Set<keyof Config>([
-  'apiKey',
-  'baseUrl',
-  'region',
-  'output',
-  'timeout',
-  'defaultTextModel',
-  'defaultSpeechModel',
-]);
-
-const OUTPUT_FORMATS = new Set(['text', 'json']);
-
-export interface ConfigParseResult {
-  config: Config;
-  warnings: string[];
+// On-disk config (~/.stepfun-cli/config.json). Stored camelCase to match the
+// pre-existing file written by earlier versions; snake_case aliases are also
+// accepted on read for robustness.
+export interface ConfigFile {
+  apiKey?: string;
+  region?: Region;
+  genBaseUrl?: string;
+  apiBaseUrl?: string;
+  output?: 'text' | 'json';
+  timeout?: number;
+  defaultTextModel?: string;
+  defaultSpeechTtsModel?: string;
+  defaultSpeechAsrModel?: string;
+  defaultImageModel?: string;
 }
 
-/** Validate untrusted JSON before it becomes runtime configuration. */
-export function parseConfig(value: unknown): ConfigParseResult {
-  if (!isRecord(value)) {
-    return { config: {}, warnings: ['Configuration must be a JSON object; ignoring its contents.'] };
+const VALID_OUTPUTS = new Set<string>(['text', 'json']);
+
+export function parseConfigFile(raw: unknown): ConfigFile {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const obj = raw as Record<string, unknown>;
+  const out: ConfigFile = {};
+
+  const apiKey = obj.apiKey ?? obj.api_key;
+  if (typeof apiKey === 'string') out.apiKey = apiKey;
+
+  const region = obj.region;
+  if (typeof region === 'string' && isValidRegion(region)) out.region = region;
+
+  const genBase = obj.genBaseUrl ?? obj.gen_base_url ?? obj.baseUrl ?? obj.base_url;
+  if (typeof genBase === 'string' && genBase.startsWith('http')) out.genBaseUrl = genBase;
+
+  const apiBase = obj.apiBaseUrl ?? obj.api_base_url;
+  if (typeof apiBase === 'string' && apiBase.startsWith('http')) out.apiBaseUrl = apiBase;
+
+  if (typeof obj.output === 'string' && VALID_OUTPUTS.has(obj.output)) {
+    out.output = obj.output as ConfigFile['output'];
+  }
+  if (typeof obj.timeout === 'number' && obj.timeout > 0) out.timeout = obj.timeout;
+
+  for (const [k1, k2] of [
+    ['defaultTextModel', 'default_text_model'],
+    ['defaultSpeechTtsModel', 'default_speech_tts_model'],
+    ['defaultSpeechAsrModel', 'default_speech_asr_model'],
+    ['defaultImageModel', 'default_image_model'],
+  ] as const) {
+    const v = obj[k1] ?? obj[k2];
+    if (typeof v === 'string' && v.length > 0) (out as Record<string, string>)[k1] = v;
   }
 
-  const config: Config = {};
-  const warnings: string[] = [];
-
-  for (const key of Object.keys(value)) {
-    if (!CONFIG_KEYS.has(key as keyof Config)) {
-      warnings.push(`Unknown configuration field "${key}" was ignored.`);
-    }
-  }
-
-  assignString(value, config, 'apiKey', warnings);
-  assignString(value, config, 'baseUrl', warnings);
-  assignString(value, config, 'defaultTextModel', warnings);
-  assignString(value, config, 'defaultSpeechModel', warnings);
-
-  if (value.region !== undefined) {
-    const region = typeof value.region === 'string' ? normalizeRegion(value.region) : undefined;
-    if (region) {
-      config.region = region;
-    } else {
-      warnings.push('Invalid configuration field "region" was ignored.');
-    }
-  }
-
-  if (value.output !== undefined) {
-    if (typeof value.output === 'string' && OUTPUT_FORMATS.has(value.output)) {
-      config.output = value.output;
-    } else {
-      warnings.push('Invalid configuration field "output" was ignored.');
-    }
-  }
-
-  if (value.timeout !== undefined) {
-    if (typeof value.timeout === 'number' && Number.isFinite(value.timeout) && value.timeout > 0) {
-      config.timeout = value.timeout;
-    } else {
-      warnings.push('Invalid configuration field "timeout" was ignored.');
-    }
-  }
-
-  return { config, warnings };
+  return out;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+// Fully resolved runtime config.
+export interface Config {
+  apiKey?: string;
+  fileApiKey?: string;
+  fileRegion?: Region;
+  configPath: string;
+  region: Region;
+  genBaseUrl: string;
+  apiBaseUrl: string;
+  docsHost: string;
+  output: 'text' | 'json';
+  timeout: number;
+  defaultTextModel?: string;
+  defaultSpeechTtsModel?: string;
+  defaultSpeechAsrModel?: string;
+  defaultImageModel?: string;
+  verbose: boolean;
+  quiet: boolean;
+  noColor: boolean;
+  yes: boolean;
+  dryRun: boolean;
+  nonInteractive: boolean;
 }
 
-function assignString(
-  source: Record<string, unknown>,
-  target: Config,
-  key: 'apiKey' | 'baseUrl' | 'defaultTextModel' | 'defaultSpeechModel',
-  warnings: string[]
-): void {
-  const value = source[key];
-  if (value === undefined) return;
-  if (typeof value === 'string' && value.length > 0) {
-    target[key] = value;
-  } else {
-    warnings.push(`Invalid configuration field "${key}" was ignored.`);
-  }
-}
+export const DEFAULTS = {
+  textModel: 'step-3.7-flash',
+  speechTtsModel: 'stepaudio-2.5-tts',
+  speechAsrModel: 'stepaudio-2.5-asr',
+  imageModel: 'step-image-edit-2',
+  ttsVoice: 'lively-girl',
+  timeout: 120,
+  region: DEFAULT_REGION,
+} as const;

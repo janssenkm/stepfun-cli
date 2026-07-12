@@ -1,41 +1,66 @@
 # Text Resource
 
-Status: **Partial**. `chat` is supported; interactive `repl` is registered but returns `UNSUPPORTED`.
+Status: **Supported**. Three chat APIs, all on the generation base (`/step_plan/v1`).
 
-## `text chat`
+## `text chat` — OpenAI Completions
 
-```text
-stepfun text chat [flags]
+`POST /chat/completions`
+
+```
+--model <model>            default: step-3.7-flash
+--message <text>           repeatable; optional "role:" prefix (user:hi)
+--messages-file <path>     JSON messages array (- for stdin)
+--system <text>            system prompt
+--image/--video/--audio    multimodal attachments (repeatable)
+--max-tokens <n>  --temperature <n>  --top-p <n>  --n <n>
+--stop <seq>  --frequency-penalty <n>
+--response-format <text|json_object>
+--reasoning-effort <low|medium|high>
+--reasoning-format <general|deepseek-style>
+--tool <json|path>         function tool (repeatable)
+--stream                   stream tokens live
+--show-reasoning           print reasoning to stderr
 ```
 
-| Flag | Requirement |
-| --- | --- |
-| `--model <model>` | Select a text model; configuration and built-in defaults apply |
-| `--message <text>` | Repeatable message; optional `system:`, `user:`, or `assistant:` role prefix |
-| `--messages-file <path|->` | Read a JSON message array from a file or stdin |
-| `--system <text>` | Prepend a system instruction |
-| `--max-tokens <int>` | Positive maximum output token count |
-| `--temperature <number>` | Sampling temperature |
-| `--top-p <number>` | Nucleus sampling probability |
-| `--reasoning-effort <low|medium|high>` | Optional reasoning depth |
-| `--reasoning-format <format>` | Optional reasoning field format |
-| `--stop <text>` | Repeatable stop sequence |
-| `--frequency-penalty <number>` | Frequency penalty from 0.0 to 1.0 |
-| `--response-format <text|json_object>` | Model response format |
-| `-n, --n <count>` | Number of responses; values above 1 require `--output json` |
-| `--stream` / `--no-stream` | Explicitly control SSE streaming |
-| `--tool <json-or-path>` | Registered repeatable tool definition; returns `UNSUPPORTED` until tool calls are fully specified |
+## `text messages` — Anthropic Messages
 
-At least one `--message` or `--messages-file` is required. Repeated messages preserve order. JSON output disables streaming because it requires a complete response object. Text output streams by default on a TTY.
+`POST /messages` (Anthropic-compatible; use `step-3.7-flash`)
 
-## `text repl`
+```
+--model <model>            default: step-3.7-flash
+--message <text>           repeatable; optional "role:" prefix
+--messages-file <path>
+--system <text>
+--max-tokens <n>           required by API (default 1024)
+--temperature  --top-p  --top-k
+--stop-sequence <seq>      repeatable
+--effort <low|medium|high> → output_config.effort
+--tool <json|path>         Anthropic tool definition (repeatable)
+--stream
+```
 
-Registered flags are `--model`, `--system`, `--max-tokens`, `--temperature`, and `--top-p`. The command returns `UNSUPPORTED` until implementation. The eventual REPL must retain conversation history, support an explicit exit command, and keep results on stdout and controls on stderr.
+## `text responses` — OpenAI Responses
 
-Examples:
+`POST /responses` (only `step-3.7-flash`)
+
+```
+--input <text>             plain-text single turn
+--message <text>           alternative to --input (repeatable)
+--messages-file <path>
+--instructions <text>      top-level system instructions
+--effort <low|medium|high> → reasoning.effort
+--max-output-tokens <n>  --temperature <n>  --top-p <n>
+--tool <json|path>  --tool-choice <str>
+--json-schema <path>       JSON Schema file → structured output
+--stream
+--show-reasoning
+```
+
+## Examples
 
 ```bash
-stepfun text chat --message "Hello" --model step-3.7-flash
-stepfun text chat --message "system:Answer briefly" --message "user:Hello" --output json
-stepfun text chat --messages-file messages.json --no-stream
+stepfun text chat --model step-3.7-flash --message "Hello" --stream
+stepfun text chat --model step-3.7-flash --message "describe this" --image photo.jpg
+stepfun text messages --model step-3.7-flash --message "hi" --max-tokens 256
+stepfun text responses --input "write a haiku" --effort high --stream
 ```
