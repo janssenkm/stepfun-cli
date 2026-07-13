@@ -48,8 +48,13 @@ export async function synthesize(
       headers: { Accept: 'text/event-stream' },
     });
     const parts: Buffer[] = [];
+    let completed = false;
     for await (const ev of parseSSE(res)) {
-      if (!ev.data || ev.data === '[DONE]') continue;
+      if (!ev.data) continue;
+      if (ev.data === '[DONE]') {
+        completed = true;
+        continue;
+      }
       let j: Record<string, unknown>;
       try {
         j = JSON.parse(ev.data);
@@ -61,10 +66,14 @@ export async function synthesize(
         const b = Buffer.from(j.audio, 'base64');
         parts.push(b);
         onChunk?.(b);
+      } else if (type === 'speech.audio.done') {
+        completed = true;
       } else if (type === 'speech.audio.error') {
-        throw new CLIError('TTS stream error.', ExitCode.GENERAL);
+        const message = typeof j.message === 'string' ? `: ${j.message}` : '';
+        throw new CLIError(`TTS stream error${message}.`, ExitCode.GENERAL);
       }
     }
+    if (!completed) throw new CLIError('TTS stream ended before completion.', ExitCode.GENERAL);
     return Buffer.concat(parts);
   }
 
@@ -128,6 +137,7 @@ export async function transcribe(
 
   let text = '';
   let usage: Record<string, unknown> | undefined;
+  let completed = false;
   for await (const ev of parseSSE(res)) {
     if (!ev.data) continue;
     let j: Record<string, unknown>;
@@ -141,11 +151,13 @@ export async function transcribe(
       text += j.delta;
       onDelta?.(j.delta);
     } else if (type === 'transcript.text.done') {
+      completed = true;
       if (typeof j.text === 'string') text = j.text;
       usage = j.usage as Record<string, unknown> | undefined;
     } else if (type === 'error') {
       throw new CLIError(`ASR error: ${(j.message as string) ?? 'unknown'}`, ExitCode.GENERAL);
     }
   }
+  if (!completed) throw new CLIError('ASR stream ended before completion.', ExitCode.GENERAL);
   return { text, usage };
 }

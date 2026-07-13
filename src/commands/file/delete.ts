@@ -5,6 +5,7 @@ import { isInteractive } from '../../utils/env';
 import { confirm } from '../../utils/prompt';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
+import { dryRun } from '../../output/formatter';
 
 export default defineCommand({
   name: 'file delete',
@@ -17,7 +18,12 @@ export default defineCommand({
     const id = (flags._positional?.[0] as string | undefined) || (flags.id as string | undefined);
     if (!id) throw new CLIError('File id required.', ExitCode.USAGE, 'Usage: stepfun file delete <id>');
 
-    if (!flags.yes && isInteractive({ nonInteractive: config.nonInteractive })) {
+    if (dryRun(config, { method: 'DELETE', path: `/files/${encodeURIComponent(id)}` })) return;
+
+    if (!flags.yes && !isInteractive({ nonInteractive: config.nonInteractive })) {
+      throw new CLIError('Non-interactive deletion requires --yes.', ExitCode.USAGE);
+    }
+    if (!flags.yes) {
       const ok = await confirm({ message: `Delete file ${id}?`, defaultYes: false });
       if (!ok) {
         process.stderr.write('Cancelled.\n');

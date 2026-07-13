@@ -47,9 +47,18 @@ function mockServer() {
 
       if (p === '/chat/completions') {
         const b = json();
-        if (b && b.stream) {
-          rec('chat.stream', b);
-          res.setHeader('content-type', 'text/event-stream');
+          if (b && b.stream) {
+            rec('chat.stream', b);
+            res.setHeader('content-type', 'text/event-stream');
+            if (b.model === 'stream-error') {
+              res.write('event: error\ndata: {"type":"error","error":{"message":"overloaded"}}\n\n');
+              return res.end();
+            }
+            if (b.model === 'deepseek') {
+              res.write('data: {"choices":[{"delta":{"reasoning_content":"think"}}]}\n\n');
+              res.write('data: [DONE]\n\n');
+              return res.end();
+            }
           if (b.model === 'toolcall') {
             // Two deltas targeting the same tool_call index → arguments must concatenate.
             res.write('data: ' + JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'get_weather', arguments: '{"city":' } }] } }] }) + '\n\n');
@@ -66,7 +75,7 @@ function mockServer() {
         }
         rec('chat.json', b);
         res.setHeader('content-type', 'application/json');
-        return res.end(JSON.stringify({ id: 'x', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: 'hi back' }, finish_reason: 'stop' }], usage: { total_tokens: 3 } }));
+        return res.end(JSON.stringify({ id: 'x', object: 'chat.completion', choices: [{ index: 0, message: { role: 'assistant', content: 'hi back', ...(b.model === 'deepseek' ? { reasoning_content: 'think' } : {}) }, finish_reason: 'stop' }], usage: { total_tokens: 3 } }));
       }
 
       if (p === '/messages') {
@@ -107,6 +116,7 @@ function mockServer() {
         if (b && b.stream_format === 'sse') {
           rec('tts.stream', b); res.setHeader('content-type', 'text/event-stream');
           res.write('data: {"type":"speech.audio.delta","audio":"' + Buffer.from('AUDIO1').toString('base64') + '"}\n\n');
+          if (b.input === 'truncated') return res.end();
           res.write('data: {"type":"speech.audio.delta","audio":"' + Buffer.from('AUDIO2').toString('base64') + '"}\n\n');
           res.write('data: [DONE]\n\n');
           return res.end();
@@ -114,7 +124,7 @@ function mockServer() {
         rec('tts.binary', b); res.setHeader('content-type', 'audio/mpeg'); return res.end(Buffer.from('FAKEMP3BYTES'));
       }
 
-      if (p === '/audio/asr/sse') { rec('asr', json()); res.setHeader('content-type', 'text/event-stream'); res.write('data: {"type":"transcript.text.delta","delta":"hello"}\n\n'); res.write('data: {"type":"transcript.text.done","text":"hello"}\n\n'); return res.end(); }
+      if (p === '/audio/asr/sse') { const b = json(); rec('asr', b); res.setHeader('content-type', 'text/event-stream'); res.write('data: {"type":"transcript.text.delta","delta":"hello"}\n\n'); if (b.audio.input.transcription.model !== 'truncated') res.write('data: {"type":"transcript.text.done","text":"hello"}\n\n'); return res.end(); }
 
       res.statusCode = 404; res.end();
     });
@@ -178,6 +188,20 @@ test('chat.streamCompletion tool-call accumulation', async () => {
   assert.equal(r.toolCalls[0].function.arguments, '{"city":"Beijing"}');
 });
 
+test('chat completion reads deepseek-style reasoning in JSON and SSE', async () => {
+  const json = await api.chat.createCompletion(config, { model: 'deepseek', messages: [] });
+  assert.equal(json.reasoning, 'think');
+  const stream = await api.chat.streamCompletion(config, { model: 'deepseek', messages: [] });
+  assert.equal(stream.reasoning, 'think');
+});
+
+test('chat stream surfaces SSE error events', async () => {
+  await assert.rejects(
+    api.chat.streamCompletion(config, { model: 'stream-error', messages: [] }),
+    /overloaded/,
+  );
+});
+
 test('messages.streamMessages parses Anthropic SSE', async () => {
   const r = await api.chat.streamMessages(config, { model: 'm', messages: [] });
   assert.equal(r.content, 'pong');
@@ -204,6 +228,17 @@ test('audio.synthesize SSE concatenates chunks', async () => {
   const buf = await api.audio.synthesize(config, { model: 'm', input: 'hi', voice: 'v', streamFormat: 'sse' });
   assert.equal(buf.toString(), 'AUDIO1AUDIO2');
   assert.equal(seen['tts.stream'].stream_format, 'sse');
+});
+
+test('audio streams reject premature EOF', async () => {
+  await assert.rejects(
+    api.audio.synthesize(config, { model: 'm', input: 'truncated', voice: 'v', streamFormat: 'sse' }),
+    /before completion/,
+  );
+  await assert.rejects(
+    api.audio.transcribe(config, { dataB64: 'AAAA', model: 'truncated', formatType: 'wav' }),
+    /before completion/,
+  );
 });
 
 test('audio.transcribe parses ASR SSE', async () => {

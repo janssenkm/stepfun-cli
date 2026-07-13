@@ -40,13 +40,13 @@ export function mapApiError(
     return new CLIError(
       `Insufficient balance (HTTP 402): ${apiMsg}`,
       ExitCode.QUOTA,
-      'Add funds / activate StepPlan at https://platform.stepfun.ai',
+      `Add funds / activate StepPlan at ${region === 'StepPlan-CN' ? 'https://platform.stepfun.com' : 'https://platform.stepfun.ai'}`,
     );
   }
   if (status === 404) {
     return new CLIError(
       `Not found (HTTP 404): ${apiMsg}${url ? ` — ${url}` : ''}`,
-      ExitCode.USAGE,
+      ExitCode.GENERAL,
       'Check the endpoint path and that the resource belongs to your account.',
     );
   }

@@ -1,6 +1,6 @@
 import { defineCommand } from '../../command';
 import { getModel } from '../../api/models';
-import { formatOutput } from '../../output/formatter';
+import { formatOutput, dryRun } from '../../output/formatter';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
 
@@ -13,6 +13,7 @@ export default defineCommand({
   async run(config, flags) {
     const id = (flags._positional?.[0] as string | undefined) || (flags.id as string | undefined);
     if (!id) throw new CLIError('Model id required.', ExitCode.USAGE, 'Usage: stepfun models get <id>');
+    if (dryRun(config, { method: 'GET', path: `/models/${encodeURIComponent(id)}` })) return;
     const model = await getModel(config, id);
     process.stdout.write(formatOutput(model, config.output) + '\n');
   },

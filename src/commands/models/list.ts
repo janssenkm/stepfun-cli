@@ -1,6 +1,6 @@
 import { defineCommand } from '../../command';
 import { listModels } from '../../api/models';
-import { formatOutput } from '../../output/formatter';
+import { formatOutput, dryRun } from '../../output/formatter';
 
 export default defineCommand({
   name: 'models list',
@@ -8,6 +8,7 @@ export default defineCommand({
   usage: 'stepfun models list',
   apiDocs: '/docs/en/api-reference/models/list',
   async run(config) {
+    if (dryRun(config, { method: 'GET', path: '/models' })) return;
     const { data } = await listModels(config);
     if (config.output === 'json') {
       process.stdout.write(formatOutput(data, 'json') + '\n');

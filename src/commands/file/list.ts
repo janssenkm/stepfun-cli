@@ -2,6 +2,7 @@ import { defineCommand } from '../../command';
 import { listFiles } from '../../api/files';
 import { formatOutput } from '../../output/formatter';
 import { mutuallyExclusive, numberRange, oneOf } from '../../utils/validation';
+import { dryRun } from '../../output/formatter';
 
 export default defineCommand({
   name: 'file list',
@@ -18,6 +19,13 @@ export default defineCommand({
     numberRange('--limit', flags.limit as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);
     if (flags.order) oneOf('--order', flags.order as string, ['asc', 'desc']);
     mutuallyExclusive('--before', flags.before, '--after', flags.after);
+    const query = new URLSearchParams();
+    if (flags.limit !== undefined) query.set('limit', String(flags.limit));
+    if (flags.order) query.set('order', String(flags.order));
+    if (flags.before) query.set('before', String(flags.before));
+    if (flags.after) query.set('after', String(flags.after));
+    const qs = query.toString();
+    if (dryRun(config, { method: 'GET', path: `/files${qs ? `?${qs}` : ''}` })) return;
     const { data } = await listFiles(config, {
       limit: flags.limit as number | undefined,
       order: flags.order as 'asc' | 'desc' | undefined,

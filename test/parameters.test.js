@@ -5,6 +5,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { saveImage } = require('../dist/commands/image/_save.js');
+const { mapApiError } = require('../dist/errors/api.js');
 
 const BIN = path.resolve(__dirname, '../dist/index.js');
 const TMP_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'sf-params-home-'));
@@ -47,6 +48,7 @@ for (const c of [
   { name: 'image rejects zero steps', args: ['image', 'generate', '--prompt', 'x', '--steps', '0', '--dry-run'], error: /between 1 and 50/ },
   { name: 'image rejects fractional steps', args: ['image', 'generate', '--prompt', 'x', '--steps', '1.5', '--dry-run'], error: /must be an integer/ },
   { name: 'image rejects unsupported response format', args: ['image', 'generate', '--prompt', 'x', '--response-format', 'bytes', '--dry-run'], error: /must be one of/ },
+  { name: 'image rejects unsupported size', args: ['image', 'generate', '--prompt', 'x', '--size', '1x1', '--dry-run'], error: /--size must be one of/ },
   { name: 'image rejects competing output destinations', args: ['image', 'generate', '--prompt', 'x', '--out', 'a.png', '--out-dir', 'out', '--dry-run'], error: /not both/ },
   { name: 'speech rejects competing text sources', args: ['speech', 'synthesize', '--text', 'x', '--text-file', 'x.txt', '--dry-run'], error: /not both/ },
   { name: 'speech rejects speed below range', args: ['speech', 'synthesize', '--text', 'x', '--speed', '0.49', '--dry-run'], error: /between 0.5 and 2/ },
@@ -57,6 +59,7 @@ for (const c of [
   { name: 'file list rejects fractional limit', args: ['file', 'list', '--limit', '1.5', '--dry-run'], error: /--limit must be an integer/ },
   { name: 'file list rejects invalid order', args: ['file', 'list', '--order', 'newest', '--dry-run'], error: /--order must be one of/ },
   { name: 'file list rejects competing cursors', args: ['file', 'list', '--before', 'a', '--after', 'b', '--dry-run'], error: /not both/ },
+  { name: 'file upload rejects unsupported purpose', args: ['file', 'upload', '--url', 'https://example.com/x', '--purpose', 'fine-tune', '--dry-run'], error: /--purpose must be one of/ },
   { name: 'ASR rejects unknown explicit format', args: ['speech', 'recognize', '--file', path.join(TMP, 'audio.wav'), '--format-type', 'aac', '--dry-run'], error: /--format-type must be one of/ },
   { name: 'ASR rejects zero channel', args: ['speech', 'recognize', '--file', path.join(TMP, 'audio.wav'), '--channel', '0', '--dry-run'], error: /--channel must be between/ },
 ]) {
@@ -68,6 +71,14 @@ for (const c of [
     assert.match(r.stderr, c.error);
   });
 }
+
+test('messages file validates every message object', () => {
+  const messages = path.join(TMP, 'bad-messages.json');
+  fs.writeFileSync(messages, '[null]');
+  const r = run(['text', 'chat', '--messages-file', messages, '--dry-run']);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /message 1 must be an object/);
+});
 
 test('chat maps repeated and structured flags to the API body', () => {
   const req = dry([
@@ -148,4 +159,9 @@ test('multi-image --out suffix stays in a dotted parent directory', async () => 
   const saved = await saveImage({ b64_json: Buffer.from('image-2').toString('base64') }, 1, { out });
   assert.equal(saved, path.join(dir, 'image-2'));
   assert.equal(fs.readFileSync(saved, 'utf-8'), 'image-2');
+});
+
+test('HTTP 404 maps to GENERAL and CN 402 uses the CN hint', () => {
+  assert.equal(mapApiError(404, {}).exitCode, 1);
+  assert.match(mapApiError(402, {}, undefined, 'StepPlan-CN').hint, /platform\.stepfun\.com/);
 });

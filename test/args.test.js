@@ -94,3 +94,8 @@ test('parseFlags rejects values attached to boolean flags', () => {
     /does not take a value/,
   );
 });
+
+test('parseFlags accepts an attached string value beginning with --', () => {
+  const f = parseFlags(['--message=--literal'], [{ flag: '--message <text>' }]);
+  assert.equal(f.message, '--literal');
+});

@@ -40,6 +40,12 @@ jobs:
             exit 1
           fi
 
+          SOURCE_VERSION="$(node -e "const fs=require('fs');const s=fs.readFileSync('src/version.ts','utf8');const m=s.match(/CLI_VERSION = '([^']+)'/);if(!m)process.exit(1);process.stdout.write(m[1])")"
+          if [ "$SOURCE_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "src/version.ts version $SOURCE_VERSION does not match package.json version $PACKAGE_VERSION"
+            exit 1
+          fi
+
       - name: Build project
         run: npm run build
 

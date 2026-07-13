@@ -18,6 +18,16 @@ export interface CompletionResult {
   raw?: unknown;
 }
 
+function streamError(json: Record<string, unknown>): string {
+  const error = json.error;
+  if (error && typeof error === 'object') {
+    const message = (error as Record<string, unknown>).message;
+    if (typeof message === 'string') return message;
+  }
+  if (typeof json.message === 'string') return json.message;
+  return 'unknown streaming error';
+}
+
 function mergeToolCallDelta(
   acc: CompletionResult['toolCalls'],
   tc: { index?: number; id?: string; type?: string; function?: { name?: string; arguments?: string } },
@@ -42,7 +52,7 @@ export async function createCompletion(config: Config, body: Record<string, unkn
   const msg = choice?.message as Record<string, unknown> | undefined;
   return {
     content: String(msg?.content ?? ''),
-    reasoning: String(msg?.reasoning ?? ''),
+    reasoning: String(msg?.reasoning ?? msg?.reasoning_content ?? ''),
     toolCalls: (msg?.tool_calls as CompletionResult['toolCalls']) ?? [],
     usage: data.usage as Record<string, unknown> | undefined,
     finishReason: choice?.finish_reason as string | undefined,
@@ -74,6 +84,9 @@ export async function streamCompletion(
     } catch {
       continue;
     }
+    if (json.type === 'error' || ev.event === 'error') {
+      throw new Error(`Completions stream failed: ${streamError(json)}`);
+    }
     const choice = (json.choices as Array<Record<string, unknown>> | undefined)?.[0];
     if (choice) {
       const delta = choice.delta as Record<string, unknown> | undefined;
@@ -81,9 +94,10 @@ export async function streamCompletion(
         result.content += delta.content;
         h.onContent?.(delta.content as string);
       }
-      if (delta?.reasoning) {
-        result.reasoning += delta.reasoning;
-        h.onReasoning?.(delta.reasoning as string);
+      const reasoning = delta?.reasoning ?? delta?.reasoning_content;
+      if (typeof reasoning === 'string') {
+        result.reasoning += reasoning;
+        h.onReasoning?.(reasoning);
       }
       const tcs = delta?.tool_calls;
       if (Array.isArray(tcs)) {
@@ -163,6 +177,9 @@ export async function streamMessages(
       continue;
     }
     const type = (json.type as string) || ev.event;
+    if (type === 'error') {
+      throw new Error(`Messages stream failed: ${streamError(json)}`);
+    }
     if (type === 'content_block_start') {
       const block = json.content_block as Record<string, unknown> | undefined;
       if (block?.type === 'tool_use') {

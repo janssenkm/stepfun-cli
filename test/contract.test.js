@@ -72,6 +72,24 @@ test('dry-run for token count prepends system message', () => {
   ]);
 });
 
+test('dry-run for management commands needs no key and makes no request', () => {
+  const r = run(['models', 'list', '--dry-run', '--output', 'json'], { STEPFUN_API_KEY: '' });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout).request, { method: 'GET', path: '/models' });
+});
+
+test('file delete dry-run bypasses confirmation and makes no request', () => {
+  const r = run(['file', 'delete', 'file-x', '--dry-run', '--output', 'json'], { STEPFUN_API_KEY: '' });
+  assert.equal(r.code, 0, r.stderr);
+  assert.deepEqual(JSON.parse(r.stdout).request, { method: 'DELETE', path: '/files/file-x' });
+});
+
+test('non-interactive file deletion requires --yes', () => {
+  const r = run(['file', 'delete', 'file-x'], { STEPFUN_API_KEY: 'dummy' });
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /requires --yes/);
+});
+
 test('region validation rejects bad value', () => {
   const r = run(['auth', 'status', '--region', 'eu']);
   assert.equal(r.code, 2);

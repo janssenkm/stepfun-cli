@@ -75,6 +75,17 @@ export async function buildConversation(flags: Record<string, unknown>): Promise
     if (!Array.isArray(messages)) {
       throw new CLIError('--messages-file must contain a JSON array of messages', ExitCode.USAGE);
     }
+    for (const [index, message] of messages.entries()) {
+      if (!message || typeof message !== 'object' || Array.isArray(message)) {
+        throw new CLIError(`--messages-file message ${index + 1} must be an object`, ExitCode.USAGE);
+      }
+      if (typeof message.role !== 'string' || !message.role) {
+        throw new CLIError(`--messages-file message ${index + 1} must have a role`, ExitCode.USAGE);
+      }
+      if (!Object.prototype.hasOwnProperty.call(message, 'content')) {
+        throw new CLIError(`--messages-file message ${index + 1} must have content`, ExitCode.USAGE);
+      }
+    }
   } else if (f.message && f.message.length > 0) {
     messages = f.message.map(parseMessage);
   }

@@ -1,6 +1,6 @@
 import { defineCommand } from '../../command';
 import { getFile } from '../../api/files';
-import { formatOutput } from '../../output/formatter';
+import { formatOutput, dryRun } from '../../output/formatter';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
 
@@ -13,6 +13,7 @@ export default defineCommand({
   async run(config, flags) {
     const id = (flags._positional?.[0] as string | undefined) || (flags.id as string | undefined);
     if (!id) throw new CLIError('File id required.', ExitCode.USAGE, 'Usage: stepfun file get <id>');
+    if (dryRun(config, { method: 'GET', path: `/files/${encodeURIComponent(id)}` })) return;
     const obj = await getFile(config, id);
     process.stdout.write(formatOutput(obj, config.output) + '\n');
   },

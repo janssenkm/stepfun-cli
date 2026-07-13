@@ -70,9 +70,9 @@ export async function request(config: Config, opts: RequestOpts): Promise<Respon
           ? opts.body
           : JSON.stringify(opts.body)
       : undefined,
-    // For streaming responses we must not abort on the (header) timeout — the
-    // caller controls lifetime.
-    signal: opts.stream ? undefined : AbortSignal.timeout(timeoutMs),
+    // Keep the timeout active while the response body is consumed as well as
+    // while waiting for headers, so a stalled SSE stream cannot hang forever.
+    signal: AbortSignal.timeout(timeoutMs),
   });
 
   if (config.verbose) {
@@ -81,7 +81,13 @@ export async function request(config: Config, opts: RequestOpts): Promise<Respon
 
   if (!res.ok) {
     let body: ApiErrorBody = {};
-    try { body = (await res.json()) as ApiErrorBody; } catch { /* non-JSON */ }
+    const raw = await res.text();
+    try {
+      body = JSON.parse(raw) as ApiErrorBody;
+    } catch {
+      const summary = raw.replace(/\s+/g, ' ').trim().slice(0, 300);
+      if (summary) body = { error: { message: summary } };
+    }
     throw mapApiError(res.status, body, opts.url, config.region);
   }
 

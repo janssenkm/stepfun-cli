@@ -1,12 +1,13 @@
 import { scanCommandPath, parseFlags } from './args';
 import { registry } from './registry';
 import { GLOBAL_OPTIONS } from './command';
-import { handleError } from './errors/handler';
+import { handleError, setErrorOutputFormat } from './errors/handler';
 import { loadConfig, readConfigFile } from './config/loader';
 import { DEFAULT_REGION, isValidRegion, type Region } from './config/regions';
 import { CLIError } from './errors/base';
 import { ExitCode } from './errors/codes';
 import { CLI_VERSION } from './version';
+import { detectOutputFormat } from './output/formatter';
 
 process.on('SIGINT', () => {
   process.stderr.write('\nInterrupted.\n');
@@ -72,7 +73,11 @@ export async function main(): Promise<void> {
   const flags = parseFlags(argv, [...GLOBAL_OPTIONS, ...(command.options ?? [])]);
   if (extra.length > 0) (flags as Record<string, unknown>)._positional = extra;
 
+  // Make explicit CLI output selection available even if config loading fails.
+  setErrorOutputFormat(detectOutputFormat((flags.output as string | undefined) ?? process.env.STEPFUN_OUTPUT));
+
   const config = loadConfig(flags);
+  setErrorOutputFormat(config.output);
 
   const needsAuth = !NO_AUTH_SETUP.some((prefix) => prefix.every((c, i) => commandPath[i] === c));
   if (needsAuth && !config.apiKey && !config.dryRun) {

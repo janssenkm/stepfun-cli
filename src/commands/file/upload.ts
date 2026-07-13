@@ -4,6 +4,8 @@ import { formatOutput, dryRun } from '../../output/formatter';
 import { ensureFileExists, describeFile } from '../../utils/fs';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
+import { oneOf } from '../../utils/validation';
+import { statSync } from 'fs';
 
 export default defineCommand({
   name: 'file upload',
@@ -20,6 +22,7 @@ export default defineCommand({
     const file = flags.file as string | undefined;
     const url = flags.url as string | undefined;
     const purpose = (flags.purpose as string | undefined) || 'storage';
+    oneOf('--purpose', purpose, ['storage']);
 
     if (!file && !url) {
       throw new CLIError('Either --file or --url is required.', ExitCode.USAGE);
@@ -27,7 +30,15 @@ export default defineCommand({
     if (file && url) {
       throw new CLIError('Pass either --file or --url, not both.', ExitCode.USAGE);
     }
-    if (file) ensureFileExists(file, 'file');
+    if (file) {
+      ensureFileExists(file, 'file');
+      const info = describeFile(file);
+      if (!statSync(info.path).isFile()) throw new CLIError('--file must be a regular file.', ExitCode.USAGE);
+      if (info.size > 128 * 1024 * 1024) throw new CLIError('--file must not exceed 128 MB.', ExitCode.USAGE);
+      if (!['mp4', 'jpg', 'jpeg', 'png', 'webp', 'gif', 'mp3', 'wav'].includes(info.ext)) {
+        throw new CLIError('--file has an unsupported type.', ExitCode.USAGE);
+      }
+    }
 
     const request = file
       ? { file: describeFile(file), purpose }

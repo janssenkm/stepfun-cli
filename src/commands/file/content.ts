@@ -3,6 +3,7 @@ import { getFileContent } from '../../api/files';
 import { saveBytes } from '../../utils/fs';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
+import { dryRun } from '../../output/formatter';
 
 export default defineCommand({
   name: 'file content',
@@ -14,6 +15,7 @@ export default defineCommand({
   async run(config, flags) {
     const id = (flags._positional?.[0] as string | undefined) || (flags.id as string | undefined);
     if (!id) throw new CLIError('File id required.', ExitCode.USAGE, 'Usage: stepfun file content <id>');
+    if (dryRun(config, { method: 'GET', path: `/files/${encodeURIComponent(id)}/content` })) return;
     const out = flags.out as string | undefined;
     const res = await getFileContent(config, id);
     const buf = Buffer.from(await res.arrayBuffer());

@@ -2,9 +2,15 @@ import { CLIError } from './base';
 import { ExitCode } from './codes';
 import { detectOutputFormat } from '../output/formatter';
 
+let outputOverride: 'text' | 'json' | undefined;
+
+export function setErrorOutputFormat(format: 'text' | 'json'): void {
+  outputOverride = format;
+}
+
 export function handleError(err: unknown): never {
   if (err instanceof CLIError) {
-    const format = detectOutputFormat(process.env.STEPFUN_OUTPUT);
+    const format = outputOverride ?? detectOutputFormat(process.env.STEPFUN_OUTPUT);
 
     if (format === 'json') {
       process.stderr.write(JSON.stringify(err.toJSON(), null, 2) + '\n');

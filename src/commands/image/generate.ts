@@ -33,15 +33,17 @@ export default defineCommand({
 
     const model = (flags.model as string | undefined) || config.defaultImageModel || 'step-image-edit-2';
     const responseFormat = (flags.responseFormat as string | undefined) || 'b64_json';
+    const size = flags.size as string | undefined;
     maxLength('--prompt', prompt, 512);
     maxLength('--negative-prompt', flags.negativePrompt as string | undefined, 512);
     oneOf('--response-format', responseFormat, ['b64_json', 'url']);
+    if (size) oneOf('--size', size, ['1024x1024', '768x1360', '896x1184', '1360x768', '1184x896']);
     numberRange('--n', flags.n as number | undefined, 1, 1, true);
     numberRange('--steps', flags.steps as number | undefined, 1, 50, true);
     numberRange('--cfg-scale', flags.cfgScale as number | undefined, 1, 10);
     mutuallyExclusive('--out', flags.out, '--out-dir', flags.outDir);
     const body: Record<string, unknown> = { model, prompt, response_format: responseFormat };
-    if (flags.size) body.size = flags.size;
+    if (size) body.size = size;
     if (flags.n !== undefined) body.n = Number(flags.n);
     if (flags.seed !== undefined) body.seed = Number(flags.seed);
     if (flags.steps !== undefined) body.steps = Number(flags.steps);

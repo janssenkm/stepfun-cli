@@ -1,6 +1,6 @@
 import { defineCommand } from '../../command';
 import { getAccount } from '../../api/account';
-import { formatOutput } from '../../output/formatter';
+import { formatOutput, dryRun } from '../../output/formatter';
 
 export default defineCommand({
   name: 'account show',
@@ -8,6 +8,7 @@ export default defineCommand({
   usage: 'stepfun account show',
   apiDocs: '/docs/en/api-reference/accounts/get',
   async run(config) {
+    if (dryRun(config, { method: 'GET', path: '/accounts' })) return;
     const acc = await getAccount(config);
     if (config.output === 'json') {
       process.stdout.write(formatOutput(acc, 'json') + '\n');

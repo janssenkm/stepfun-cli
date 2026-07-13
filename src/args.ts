@@ -107,6 +107,7 @@ export function parseFlags(argv: string[], options: OptionDef[]): GlobalFlags {
       const eqIdx = arg.indexOf('=');
       let key: string;
       let value: string | undefined;
+      const valueWasAttached = eqIdx !== -1;
 
       if (eqIdx !== -1) {
         key = arg.slice(2, eqIdx);
@@ -135,7 +136,7 @@ export function parseFlags(argv: string[], options: OptionDef[]): GlobalFlags {
         value = argv[i];
       }
 
-      if (value === undefined || value.startsWith('--')) {
+      if (value === undefined || (!valueWasAttached && value.startsWith('--'))) {
         throw new CLIError(`Flag --${key} requires a value.`, ExitCode.USAGE);
       }
 
