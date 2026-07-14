@@ -8,6 +8,7 @@ export default defineCommand({
   name: 'models get',
   description: 'Get details for a single model',
   usage: 'stepfun models get <id>',
+  positionalArgs: 1,
   examples: ['stepfun models get step-3.7-flash'],
   apiDocs: '/docs/en/api-reference/models/retrieve',
   async run(config, flags) {

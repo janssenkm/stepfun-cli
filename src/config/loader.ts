@@ -65,9 +65,14 @@ export function loadConfig(flags: GlobalFlags): Config {
     file.apiBaseUrl ||
     profile.apiBase;
 
-  const output: OutputFormat = detectOutputFormat(
-    (flags.output as string | undefined) || process.env.STEPFUN_OUTPUT || file.output,
-  );
+  const explicitOutput = (flags.output as string | undefined) || process.env.STEPFUN_OUTPUT;
+  if (explicitOutput !== undefined && explicitOutput !== 'text' && explicitOutput !== 'json') {
+    throw new CLIError(
+      `Invalid output format "${explicitOutput}". Valid values: text, json`,
+      ExitCode.USAGE,
+    );
+  }
+  const output: OutputFormat = detectOutputFormat(explicitOutput || file.output);
 
   const envTimeout = process.env.STEPFUN_TIMEOUT ? Number(process.env.STEPFUN_TIMEOUT) : undefined;
   const validEnvTimeout =

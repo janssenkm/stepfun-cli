@@ -95,13 +95,17 @@ export function parseFlags(argv: string[], options: OptionDef[]): GlobalFlags {
     help: false,
     nonInteractive: false,
   };
+  const positional: string[] = [];
 
   let i = 0;
   while (i < argv.length) {
     const arg = argv[i]!;
 
     if (arg === '--help' || arg === '-h') { flags.help = true; i++; continue; }
-    if (arg === '--') { break; }
+    if (arg === '--') {
+      positional.push(...argv.slice(i + 1));
+      break;
+    }
 
     if (arg.startsWith('--')) {
       const eqIdx = arg.indexOf('=');
@@ -156,10 +160,13 @@ export function parseFlags(argv: string[], options: OptionDef[]): GlobalFlags {
       } else {
         (flags as Record<string, unknown>)[camelKey] = value;
       }
+    } else if (!arg.startsWith('-')) {
+      positional.push(arg);
     }
 
     i++;
   }
 
+  if (positional.length > 0) flags._positional = positional;
   return flags;
 }

@@ -2,6 +2,8 @@ import { request, requestJson, requestStream } from '../client/http';
 import { parseSSE } from '../client/sse';
 import { genUrl } from '../client/urls';
 import type { Config } from '../config/schema';
+import { CLIError } from '../errors/base';
+import { ExitCode } from '../errors/codes';
 
 export interface StreamHandlers {
   onContent?(delta: string): void;
@@ -73,9 +75,13 @@ export async function streamCompletion(
   });
 
   const result: CompletionResult = { content: '', reasoning: '', toolCalls: [] };
+  let completed = false;
   for await (const ev of parseSSE(res)) {
     if (!ev.data || ev.data === '[DONE]') {
-      if (ev.data === '[DONE]') break;
+      if (ev.data === '[DONE]') {
+        completed = true;
+        break;
+      }
       continue;
     }
     let json: Record<string, unknown>;
@@ -115,6 +121,9 @@ export async function streamCompletion(
     }
     if (json.usage) result.usage = json.usage as Record<string, unknown>;
   }
+  if (!completed) {
+    throw new CLIError('Completions stream ended before completion.', ExitCode.GENERAL);
+  }
   return result;
 }
 
@@ -122,6 +131,7 @@ export async function streamCompletion(
 
 export interface MessagesResult {
   content: string;
+  reasoning: string;
   toolCalls: Array<{ id: string; name: string; input: unknown }>;
   usage?: { input_tokens?: number; output_tokens?: number };
   stopReason?: string;
@@ -136,11 +146,16 @@ export async function createMessages(config: Config, body: Record<string, unknow
   });
   const blocks = (data.content as Array<Record<string, unknown>>) ?? [];
   const text = blocks.filter((b) => b.type === 'text').map((b) => String(b.text)).join('');
+  const reasoning = blocks
+    .filter((b) => b.type === 'thinking')
+    .map((b) => String(b.thinking ?? ''))
+    .join('');
   const toolCalls = blocks
     .filter((b) => b.type === 'tool_use')
     .map((b) => ({ id: String(b.id), name: String(b.name), input: b.input }));
   return {
     content: text,
+    reasoning,
     toolCalls,
     usage: data.usage as MessagesResult['usage'],
     stopReason: data.stop_reason as string | undefined,
@@ -161,12 +176,14 @@ export async function streamMessages(
   });
 
   let content = '';
+  let reasoning = '';
   let usage: MessagesResult['usage'];
   let stopReason: string | undefined;
   // Anthropic streams a tool_use block as: content_block_start (id + name),
   // then content_block_delta events with input_json_delta (partial_json
   // fragments). Accumulate by block index so streaming tool calls aren't lost.
   const toolBlocks = new Map<number, { id: string; name: string; args: string }>();
+  let completed = false;
 
   for await (const ev of parseSSE(res)) {
     if (!ev.data) continue;
@@ -195,6 +212,9 @@ export async function streamMessages(
       if (delta?.type === 'text_delta' && typeof delta.text === 'string') {
         content += delta.text;
         h.onContent?.(delta.text);
+      } else if (delta?.type === 'thinking_delta' && typeof delta.thinking === 'string') {
+        reasoning += delta.thinking;
+        h.onReasoning?.(delta.thinking);
       } else if (delta?.type === 'input_json_delta' && typeof delta.partial_json === 'string') {
         const idx = (json.index as number) ?? 0;
         const tb = toolBlocks.get(idx);
@@ -209,8 +229,13 @@ export async function streamMessages(
       stopReason = (json.stop_reason as string) ?? stopReason;
       usage = { ...usage, ...(json.usage as MessagesResult['usage']) };
     } else if (type === 'message_stop') {
+      completed = true;
       break;
     }
+  }
+
+  if (!completed) {
+    throw new CLIError('Messages stream ended before completion.', ExitCode.GENERAL);
   }
 
   const toolCalls: MessagesResult['toolCalls'] = [...toolBlocks.entries()]
@@ -227,7 +252,7 @@ export async function streamMessages(
       return { id: tb.id, name: tb.name, input };
     });
 
-  return { content, toolCalls, usage, stopReason };
+  return { content, reasoning, toolCalls, usage, stopReason };
 }
 
 // ---------------- Responses (OpenAI-compatible) ----------------
@@ -251,6 +276,16 @@ function extractResponsesText(output: unknown): string {
     .join('');
 }
 
+function extractResponsesReasoning(output: unknown): string {
+  if (!Array.isArray(output)) return '';
+  return (output as Array<Record<string, unknown>>)
+    .filter((o) => o.type === 'reasoning')
+    .flatMap((o) => (o.summary as Array<Record<string, unknown>>) ?? [])
+    .filter((item) => item.type === 'summary_text')
+    .map((item) => String(item.text ?? ''))
+    .join('');
+}
+
 // function_call output items: { type:'function_call', call_id, name, arguments(JSON string) }
 function extractResponsesToolCalls(output: unknown): ResponsesResult['toolCalls'] {
   if (!Array.isArray(output)) return [];
@@ -271,7 +306,7 @@ export async function createResponses(config: Config, body: Record<string, unkno
   });
   return {
     content: extractResponsesText(data.output),
-    reasoning: '',
+    reasoning: extractResponsesReasoning(data.output),
     toolCalls: extractResponsesToolCalls(data.output),
     status: data.status as string | undefined,
     usage: data.usage as Record<string, unknown> | undefined,
@@ -296,6 +331,7 @@ export async function streamResponses(
   let usage: Record<string, unknown> | undefined;
   let status: string | undefined;
   let completedOutput: unknown;
+  let completed = false;
 
   for await (const ev of parseSSE(res)) {
     if (!ev.data) continue;
@@ -313,6 +349,7 @@ export async function streamResponses(
       reasoning += json.delta;
       h.onReasoning?.(json.delta);
     } else if (type === 'response.completed') {
+      completed = true;
       const resp = json.response as Record<string, unknown> | undefined;
       status = resp?.status as string | undefined;
       usage = resp?.usage as Record<string, unknown> | undefined;
@@ -322,6 +359,9 @@ export async function streamResponses(
       // Defer throwing until after the stream closes; surface as error via throw.
       throw new Error(`Responses stream failed: ${msg}`);
     }
+  }
+  if (!completed) {
+    throw new CLIError('Responses stream ended before completion.', ExitCode.GENERAL);
   }
   return { content, reasoning, toolCalls: extractResponsesToolCalls(completedOutput), status, usage };
 }

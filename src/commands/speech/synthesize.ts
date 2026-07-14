@@ -80,7 +80,7 @@ export default defineCommand({
       streamFormat: flags.stream ? 'sse' : undefined,
     };
 
-    if (dryRun(config, { method: 'POST', path: '/audio/speech', body: { ...opts, input: text.slice(0, 60) + '…' } })) return;
+    if (dryRun(config, { method: 'POST', path: '/audio/speech', body: opts })) return;
 
     const outPath = flags.out as string | undefined;
     // For stdout streaming, write decoded chunks live; for --out, accumulate.

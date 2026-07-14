@@ -11,6 +11,7 @@ export default defineCommand({
   name: 'file delete',
   description: 'Delete a stored file',
   usage: 'stepfun file delete <id>',
+  positionalArgs: 1,
   options: [{ flag: '--yes', description: 'Skip the confirmation prompt' }],
   examples: ['stepfun file delete file-abc123 --yes'],
   apiDocs: '/docs/en/api-reference/files/delete',

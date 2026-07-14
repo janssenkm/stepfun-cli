@@ -99,3 +99,11 @@ test('parseFlags accepts an attached string value beginning with --', () => {
   const f = parseFlags(['--message=--literal'], [{ flag: '--message <text>' }]);
   assert.equal(f.message, '--literal');
 });
+
+test('parseFlags collects positional arguments, including values after --', () => {
+  const flags = parseFlags(
+    ['models', 'get', '--output', 'json', '--', 'model-id', 'extra'],
+    GLOBAL_OPTIONS,
+  );
+  assert.deepEqual(flags._positional, ['models', 'get', 'model-id', 'extra']);
+});

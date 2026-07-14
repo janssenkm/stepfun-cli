@@ -15,6 +15,8 @@ export interface Command {
   options?: OptionDef[];
   examples?: string[];
   apiDocs?: string;
+  /** Number of positional arguments accepted after the command path. */
+  positionalArgs?: number;
   execute(config: Config, flags: GlobalFlags): Promise<void>;
 }
 
@@ -25,6 +27,7 @@ export interface CommandSpec {
   options?: OptionDef[];
   examples?: string[];
   apiDocs?: string;
+  positionalArgs?: number;
   run(config: Config, flags: GlobalFlags): Promise<void>;
 }
 
@@ -36,6 +39,7 @@ export function defineCommand(spec: CommandSpec): Command {
     options: spec.options,
     examples: spec.examples,
     apiDocs: spec.apiDocs,
+    positionalArgs: spec.positionalArgs,
     execute: spec.run,
   };
 }

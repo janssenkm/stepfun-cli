@@ -53,8 +53,12 @@ export default defineCommand({
 
     const stream = !!flags.stream;
     if (stream && config.output === 'text') {
-      const result = await streamMessages(config, body, { onContent: (d) => process.stdout.write(d) });
+      const result = await streamMessages(config, body, {
+        onContent: (d) => process.stdout.write(d),
+        onReasoning: flags.showReasoning ? (d) => process.stderr.write(dim(d)) : undefined,
+      });
       process.stdout.write('\n');
+      if (flags.showReasoning && result.reasoning) process.stderr.write('\n');
       if (result.toolCalls.length) process.stdout.write('\n' + JSON.stringify(result.toolCalls, null, 2) + '\n');
       const u = formatUsageLine(result.usage);
       if (u) process.stderr.write(dim(u + '\n'));
@@ -70,6 +74,9 @@ export default defineCommand({
       return;
     }
     if (result.content) process.stdout.write(result.content + '\n');
+    if (flags.showReasoning && result.reasoning) {
+      process.stderr.write(dim('\n[reasoning]\n' + result.reasoning + '\n'));
+    }
     if (result.toolCalls.length) process.stdout.write('\n' + JSON.stringify(result.toolCalls, null, 2) + '\n');
     const u = formatUsageLine(result.usage);
     if (u) process.stderr.write(dim(u + '\n'));

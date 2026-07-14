@@ -136,6 +136,12 @@ The same StepPlan API key is valid on both bases. Generation endpoints are meter
 --help, --version
 ```
 
+`--output` (and `STEPFUN_OUTPUT`) accepts only `text` or `json`; other values
+exit with usage code 2. Commands also reject surplus positional arguments.
+Streaming text commands fail if the server closes before its completion event,
+rather than silently returning truncated output. `--dry-run` prints the full
+request body, which may contain sensitive prompt or TTS input.
+
 ## Exit codes
 
 `0` success · `1` general · `2` usage · `3` auth · `4` quota/rate-limit · `5` timeout · `6` network · `10` content-filter.

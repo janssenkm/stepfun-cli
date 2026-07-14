@@ -8,6 +8,7 @@ export default defineCommand({
   name: 'file get',
   description: 'Get metadata for a stored file',
   usage: 'stepfun file get <id>',
+  positionalArgs: 1,
   examples: ['stepfun file get file-abc123'],
   apiDocs: '/docs/en/api-reference/files/retrieve',
   async run(config, flags) {

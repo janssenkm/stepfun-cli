@@ -71,6 +71,12 @@ Three SSE shapes, all parsed by `parseSSE()` in `client/sse.ts`:
 - **Completions**: `data: {choices:[{delta:{content,reasoning,tool_calls}}]}`…`data: [DONE]`. Tool-call argument fragments are accumulated by index.
 - **Messages (Anthropic)**: `event:` + `data:`; `content_block_delta` with `text_delta`.
 - **Responses**: `event:` + `data:`; `response.output_text.delta` / `response.reasoning_text.delta` / `response.completed`.
+
+Each text streaming parser tracks its protocol-specific terminal event. EOF
+before `[DONE]`, `message_stop`, or `response.completed` is an error, so partial
+generation is never reported as a successful response. Reasoning deltas are
+accumulated for structured results and may also be emitted once through the
+stream callback.
 - **ASR**: `transcript.text.delta` / `transcript.text.done`.
 - **TTS (optional)**: `speech.audio.delta` (base64 chunks concatenated).
 
@@ -94,3 +100,7 @@ In text mode, deltas print live; in JSON mode, the result is buffered and emitte
 - `mock.test.js` — in-process mock server exercising each `api/*` module across JSON / SSE / binary / multipart paths: models list+get, account, files upload+list+get+delete+content, token, chat (stream/non-stream/tool-call), messages (text + tool_use), responses (text + function_call), image generate+edit, TTS binary+SSE, ASR. In-process (not spawned) because restricted sandboxes block cross-process loopback fetch.
 
 Real-API verification (Global key) covers: models, account, files CRUD, token count, chat (stream/non-stream/tool-call/reasoning), messages, responses, image generate/edit, ASR.
+
+The CLI rejects unsupported explicit output formats and surplus positional
+arguments before configuration-dependent execution. Commands declare how many
+positional arguments they accept; commands without a declaration accept none.

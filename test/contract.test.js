@@ -95,3 +95,27 @@ test('region validation rejects bad value', () => {
   assert.equal(r.code, 2);
   assert.match(r.stderr, /Invalid region/);
 });
+
+test('invalid CLI and environment output formats exit USAGE(2)', () => {
+  const cli = run(['auth', 'status', '--output', 'yaml']);
+  assert.equal(cli.code, 2);
+  assert.match(cli.stderr, /Invalid output format/);
+
+  const env = run(['auth', 'status'], { STEPFUN_OUTPUT: 'yaml' });
+  assert.equal(env.code, 2);
+  assert.match(env.stderr, /Invalid output format/);
+});
+
+test('commands reject surplus positional arguments', () => {
+  const withId = run(['models', 'get', 'first', 'second', '--dry-run']);
+  assert.equal(withId.code, 2);
+  assert.match(withId.stderr, /Too many positional arguments/);
+
+  const withoutId = run(['models', 'list', 'extra', '--dry-run']);
+  assert.equal(withoutId.code, 2);
+  assert.match(withoutId.stderr, /Too many positional arguments/);
+
+  const afterSeparator = run(['models', 'list', '--dry-run', '--', 'extra']);
+  assert.equal(afterSeparator.code, 2);
+  assert.match(afterSeparator.stderr, /Too many positional arguments/);
+});

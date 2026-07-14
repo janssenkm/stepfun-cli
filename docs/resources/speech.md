@@ -46,3 +46,7 @@ stepfun speech synthesize --text "你好，阶跃" --out out.mp3
 stepfun speech synthesize --text "streaming" --stream --out out.mp3
 stepfun speech recognize --file recording.mp3 --language zh
 ```
+
+`--dry-run` prints the complete request that would be sent, including the full
+TTS input, and performs no API request. Treat dry-run output as potentially
+sensitive when text comes from `--text-file` or stdin.

@@ -54,6 +54,10 @@ function mockServer() {
               res.write('event: error\ndata: {"type":"error","error":{"message":"overloaded"}}\n\n');
               return res.end();
             }
+            if (b.model === 'truncated') {
+              res.write('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n');
+              return res.end();
+            }
             if (b.model === 'deepseek') {
               res.write('data: {"choices":[{"delta":{"reasoning_content":"think"}}]}\n\n');
               res.write('data: [DONE]\n\n');
@@ -81,6 +85,15 @@ function mockServer() {
       if (p === '/messages') {
         const b = json(); rec('messages', b);
         res.setHeader('content-type', 'text/event-stream');
+        if (b && b.model === 'truncated') {
+          res.write('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"text_delta","text":"partial"}}\n\n');
+          return res.end();
+        }
+        if (b && b.model === 'reasoning') {
+          res.write('event: content_block_delta\ndata: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"think"}}\n\n');
+          res.write('event: message_stop\ndata: {"type":"message_stop"}\n\n');
+          return res.end();
+        }
         if (b && b.model === 'toolcall') {
           // tool_use block: start (id+name), two input_json_delta fragments, stop.
           res.write('event: content_block_start\ndata: ' + JSON.stringify({ type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_1', name: 'get_weather', input: {} } }) + '\n\n');
@@ -98,6 +111,15 @@ function mockServer() {
       if (p === '/responses') {
         const b = json(); rec('responses', b);
         res.setHeader('content-type', 'text/event-stream');
+        if (b && b.model === 'truncated') {
+          res.write('event: response.output_text.delta\ndata: {"type":"response.output_text.delta","delta":"partial"}\n\n');
+          return res.end();
+        }
+        if (b && b.model === 'reasoning') {
+          res.write('event: response.reasoning_text.delta\ndata: {"type":"response.reasoning_text.delta","delta":"think"}\n\n');
+          res.write('event: response.completed\ndata: {"type":"response.completed","response":{"status":"completed"}}\n\n');
+          return res.end();
+        }
         if (b && b.model === 'toolcall') {
           // Completed response carrying a function_call output item.
           res.write('event: response.completed\ndata: ' + JSON.stringify({ type: 'response.completed', response: { status: 'completed', output: [{ type: 'function_call', id: 'fc_1', call_id: 'call_1', name: 'get_weather', arguments: '{"city":"Beijing"}' }], usage: { total_tokens: 2 } } }) + '\n\n');
@@ -200,6 +222,41 @@ test('chat stream surfaces SSE error events', async () => {
     api.chat.streamCompletion(config, { model: 'stream-error', messages: [] }),
     /overloaded/,
   );
+});
+
+test('text streams reject premature EOF', async () => {
+  await assert.rejects(
+    api.chat.streamCompletion(config, { model: 'truncated', messages: [] }),
+    /before completion/,
+  );
+  await assert.rejects(
+    api.chat.streamMessages(config, { model: 'truncated', messages: [] }),
+    /before completion/,
+  );
+  await assert.rejects(
+    api.chat.streamResponses(config, { model: 'truncated', input: 'x' }),
+    /before completion/,
+  );
+});
+
+test('messages and responses streams expose reasoning deltas once', async () => {
+  const messagesDeltas = [];
+  const messages = await api.chat.streamMessages(
+    config,
+    { model: 'reasoning', messages: [] },
+    { onReasoning: (delta) => messagesDeltas.push(delta) },
+  );
+  assert.equal(messages.reasoning, 'think');
+  assert.deepEqual(messagesDeltas, ['think']);
+
+  const responsesDeltas = [];
+  const responses = await api.chat.streamResponses(
+    config,
+    { model: 'reasoning', input: 'x' },
+    { onReasoning: (delta) => responsesDeltas.push(delta) },
+  );
+  assert.equal(responses.reasoning, 'think');
+  assert.deepEqual(responsesDeltas, ['think']);
 });
 
 test('messages.streamMessages parses Anthropic SSE', async () => {

@@ -69,9 +69,19 @@ export async function main(): Promise<void> {
     return;
   }
 
-  const { command, extra } = registry.resolve(commandPath);
+  const { command } = registry.resolve(commandPath);
   const flags = parseFlags(argv, [...GLOBAL_OPTIONS, ...(command.options ?? [])]);
-  if (extra.length > 0) (flags as Record<string, unknown>)._positional = extra;
+  const allPositionals = flags._positional ?? [];
+  const extra = allPositionals.slice(command.name.split(' ').length);
+  flags._positional = extra;
+  const acceptedPositionals = command.positionalArgs ?? 0;
+  if (extra.length > acceptedPositionals) {
+    throw new CLIError(
+      `Too many positional arguments for "${command.name}": ${extra.slice(acceptedPositionals).join(' ')}`,
+      ExitCode.USAGE,
+      command.usage ? `Usage: ${command.usage}` : undefined,
+    );
+  }
 
   // Make explicit CLI output selection available even if config loading fails.
   setErrorOutputFormat(detectOutputFormat((flags.output as string | undefined) ?? process.env.STEPFUN_OUTPUT));

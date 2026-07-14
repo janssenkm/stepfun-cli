@@ -37,6 +37,7 @@ Status: **Supported**. Three chat APIs, all on the generation base (`/step_plan/
 --effort <low|medium|high> → output_config.effort
 --tool <json|path>         Anthropic tool definition (repeatable)
 --stream
+--show-reasoning           print thinking/reasoning blocks to stderr
 ```
 
 ## `text responses` — OpenAI Responses
@@ -64,3 +65,9 @@ stepfun text chat --model step-3.7-flash --message "describe this" --image photo
 stepfun text messages --model step-3.7-flash --message "hi" --max-tokens 256
 stepfun text responses --input "write a haiku" --effort high --stream
 ```
+
+For all three APIs, a streaming command succeeds only after the protocol's
+completion marker is received (`[DONE]`, `message_stop`, or
+`response.completed`). A stream that closes early exits with an error instead
+of returning partial output as a successful result. With `--show-reasoning`,
+reasoning is written to stderr once, while generated content remains on stdout.

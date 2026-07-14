@@ -153,6 +153,12 @@ test('PCM recognition requires the complete format tuple', () => {
   assert.deepEqual(req.request, { file: audio, model: 'stepaudio-2.5-asr', format: 'pcm' });
 });
 
+test('TTS dry-run preserves the complete input', () => {
+  const input = 'x'.repeat(80);
+  const req = dry(['speech', 'synthesize', '--text', input]);
+  assert.equal(req.body.input, input);
+});
+
 test('multi-image --out suffix stays in a dotted parent directory', async () => {
   const dir = path.join(TMP, 'results.v2');
   const out = path.join(dir, 'image');

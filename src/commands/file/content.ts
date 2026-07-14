@@ -9,6 +9,7 @@ export default defineCommand({
   name: 'file content',
   description: 'Download a stored file’s content',
   usage: 'stepfun file content <id> [--out <path>]',
+  positionalArgs: 1,
   options: [{ flag: '--out <path>', description: 'Save content to this path (default: write to stdout)' }],
   examples: ['stepfun file content file-abc123 --out out.png'],
   apiDocs: '/docs/en/api-reference/files/retrieve-content',

@@ -87,7 +87,7 @@ export default defineCommand({
       });
       process.stdout.write('\n');
       if (result.toolCalls.length) process.stdout.write('\n' + JSON.stringify(result.toolCalls, null, 2) + '\n');
-      if (showReasoning && result.reasoning) process.stderr.write(dim('\n[reasoning]\n' + result.reasoning + '\n'));
+      if (showReasoning && result.reasoning) process.stderr.write('\n');
       const u = formatUsageLine(result.usage);
       if (u) process.stderr.write(dim(u + '\n'));
       return;
@@ -102,6 +102,9 @@ export default defineCommand({
       return;
     }
     if (result.content) process.stdout.write(result.content + '\n');
+    if (showReasoning && result.reasoning) {
+      process.stderr.write(dim('\n[reasoning]\n' + result.reasoning + '\n'));
+    }
     if (result.toolCalls.length) process.stdout.write('\n' + JSON.stringify(result.toolCalls, null, 2) + '\n');
     const u = formatUsageLine(result.usage);
     if (u) process.stderr.write(dim(u + '\n'));
