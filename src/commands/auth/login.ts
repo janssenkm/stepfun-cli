@@ -1,6 +1,6 @@
 import { defineCommand } from '../../command';
 import { readConfigFile, writeConfigFile } from '../../config/loader';
-import { REGIONS, isValidRegion } from '../../config/regions';
+import { REGIONS, parseRegion, type Region } from '../../config/regions';
 import { isInteractive } from '../../utils/env';
 import { promptText } from '../../utils/prompt';
 import { CLIError } from '../../errors/base';
@@ -12,16 +12,17 @@ export default defineCommand({
   usage: 'stepfun auth login [--api-key <key>] [--region <region>]',
   options: [
     { flag: '--api-key <key>', description: 'API key (skip the prompt)' },
-    { flag: '--region <region>', description: 'StepPlan-Global | StepPlan-CN' },
+    { flag: '--region <region>', description: 'Global | CN (case-insensitive)' },
   ],
-  examples: ['stepfun auth login --api-key sk-... --region StepPlan-Global'],
+  examples: ['stepfun auth login --api-key sk-... --region Global'],
   async run(_config, flags) {
     let apiKey = flags.apiKey as string | undefined;
-    let region = flags.region as string | undefined;
+    const requestedRegion = flags.region as string | undefined;
+    let region: Region | undefined = requestedRegion ? parseRegion(requestedRegion) : undefined;
 
-    if (region && !isValidRegion(region)) {
+    if (requestedRegion && !region) {
       throw new CLIError(
-        `Invalid region "${region}". Valid: ${Object.keys(REGIONS).join(', ')}`,
+        `Invalid region "${requestedRegion}". Valid: ${Object.keys(REGIONS).join(', ')}`,
         ExitCode.USAGE,
       );
     }
@@ -38,22 +39,21 @@ export default defineCommand({
     }
 
     if (!region && isInteractive({ nonInteractive: flags.nonInteractive as boolean })) {
-      region = (
-        await promptText({ message: 'Region', defaultValue: 'StepPlan-Global' })
+      const input = (
+        await promptText({ message: 'Region', defaultValue: 'Global' })
       ).trim();
-      if (region && !isValidRegion(region)) {
-        throw new CLIError(`Invalid region "${region}".`, ExitCode.USAGE);
+      region = parseRegion(input);
+      if (!region) {
+        throw new CLIError('Invalid region. Valid: Global, CN.', ExitCode.USAGE);
       }
     }
 
-    const validatedRegion = region && isValidRegion(region) ? region : undefined;
-
     const cur = readConfigFile();
     cur.apiKey = apiKey;
-    if (validatedRegion) cur.region = validatedRegion;
+    if (region) cur.region = region;
     await writeConfigFile(cur as Record<string, unknown>);
 
-    const resolved = validatedRegion || cur.region || 'StepPlan-Global';
+    const resolved = region || cur.region || 'Global';
     process.stderr.write(`Logged in. Region: ${resolved}\n`);
     process.stderr.write(`Key: ${apiKey.slice(0, 6)}…${apiKey.slice(-4)}\n`);
   },

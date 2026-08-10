@@ -16,7 +16,7 @@ src/
     flags.ts          GlobalFlags — typed global flags + per-command index signature
   config/
     paths.ts          ~/.stepfun-cli/config.json (0600 file, 0700 dir, atomic writes)
-    regions.ts        StepPlan-Global / StepPlan-CN → { genBase, apiBase, docsHost }
+    regions.ts        Global / CN → { genBase, apiBase, docsHost }
     schema.ts         Config, ConfigFile, parseConfigFile, DEFAULTS
     loader.ts         loadConfig() (flag > env > file > default), read/write helpers
   client/

@@ -5,7 +5,7 @@ Status: **Supported**. API-key based (StepPlan does not use OAuth in this CLI).
 ## Commands
 
 ```
-auth login [--api-key <key>] [--region <StepPlan-Global|StepPlan-CN>]
+auth login [--api-key <key>] [--region <Global|CN>]
 auth status
 auth logout
 ```
@@ -15,7 +15,7 @@ auth logout
 ## Example
 
 ```bash
-stepfun auth login --api-key sk-... --region StepPlan-Global
+stepfun auth login --api-key sk-... --region Global
 stepfun auth status
 stepfun auth logout
 ```

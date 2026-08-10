@@ -1,6 +1,6 @@
 import { defineCommand } from '../../command';
 import { readConfigFile, writeConfigFile } from '../../config/loader';
-import { isValidRegion } from '../../config/regions';
+import { parseRegion } from '../../config/regions';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
 import { formatOutput } from '../../output/formatter';
@@ -12,10 +12,11 @@ const SCHEMA: Record<
   apiKey: { validate: (v) => v, help: 'API key string' },
   region: {
     validate: (v) => {
-      if (!isValidRegion(v)) throw new CLIError(`region must be StepPlan-Global or StepPlan-CN`, ExitCode.USAGE);
-      return v;
+      const region = parseRegion(v);
+      if (!region) throw new CLIError('region must be Global or CN', ExitCode.USAGE);
+      return region;
     },
-    help: 'StepPlan-Global | StepPlan-CN',
+    help: 'Global | CN (case-insensitive)',
   },
   genBaseUrl: {
     validate: (v) => {
@@ -60,7 +61,7 @@ export default defineCommand({
     { flag: '--key <key>', description: `Config key: ${Object.keys(SCHEMA).join(', ')}`, required: true },
     { flag: '--value <value>', description: 'Value to set', required: true },
   ],
-  examples: ['stepfun config set --key region --value StepPlan-CN'],
+  examples: ['stepfun config set --key region --value CN'],
   async run(_config, flags) {
     const key = flags.key as string | undefined;
     const value = flags.value as string | undefined;

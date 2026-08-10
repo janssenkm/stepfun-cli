@@ -1,12 +1,12 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { parseConfigFile } = require('../dist/config/schema.js');
-const { isValidRegion, REGIONS } = require('../dist/config/regions.js');
+const { isValidRegion, parseRegion, REGIONS } = require('../dist/config/regions.js');
 
-test('parseConfigFile accepts camelCase', () => {
-  const f = parseConfigFile({ apiKey: 'k', region: 'StepPlan-CN', output: 'json', timeout: 30 });
+test('parseConfigFile normalizes case-insensitive region names', () => {
+  const f = parseConfigFile({ apiKey: 'k', region: 'cN', output: 'json', timeout: 30 });
   assert.equal(f.apiKey, 'k');
-  assert.equal(f.region, 'StepPlan-CN');
+  assert.equal(f.region, 'CN');
   assert.equal(f.output, 'json');
   assert.equal(f.timeout, 30);
 });
@@ -31,13 +31,16 @@ test('parseConfigFile ignores garbage', () => {
 });
 
 test('regions expose gen + api base', () => {
-  assert.equal(REGIONS['StepPlan-Global'].genBase, 'https://api.stepfun.ai/step_plan/v1');
-  assert.equal(REGIONS['StepPlan-Global'].apiBase, 'https://api.stepfun.ai/v1');
-  assert.equal(REGIONS['StepPlan-CN'].genBase, 'https://api.stepfun.com/step_plan/v1');
+  assert.equal(REGIONS.Global.genBase, 'https://api.stepfun.ai/step_plan/v1');
+  assert.equal(REGIONS.Global.apiBase, 'https://api.stepfun.ai/v1');
+  assert.equal(REGIONS.CN.genBase, 'https://api.stepfun.com/step_plan/v1');
 });
 
-test('isValidRegion type guard', () => {
-  assert.equal(isValidRegion('StepPlan-Global'), true);
-  assert.equal(isValidRegion('StepPlan-CN'), true);
+test('region parser accepts Global and CN case-insensitively', () => {
+  assert.equal(isValidRegion('GLOBAL'), true);
+  assert.equal(isValidRegion('cN'), true);
   assert.equal(isValidRegion('eu'), false);
+  assert.equal(parseRegion('global'), 'Global');
+  assert.equal(parseRegion('CN'), 'CN');
+  assert.equal(parseConfigFile({ region: 'StepPlan-CN' }).region, 'CN');
 });

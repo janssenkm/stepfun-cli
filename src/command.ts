@@ -49,7 +49,7 @@ export function defineCommand(spec: CommandSpec): Command {
 // the command path.
 export const GLOBAL_OPTIONS: OptionDef[] = [
   { flag: '--api-key <key>', description: 'StepFun API key (overrides config)' },
-  { flag: '--region <region>', description: 'StepPlan region: StepPlan-Global, StepPlan-CN' },
+  { flag: '--region <region>', description: 'Region: Global | CN (case-insensitive)' },
   { flag: '--base-url <url>', description: 'Override the generation (StepPlan) base URL' },
   { flag: '--api-base-url <url>', description: 'Override the management (public /v1) base URL' },
   { flag: '--output <format>', description: 'Output format: text, json' },

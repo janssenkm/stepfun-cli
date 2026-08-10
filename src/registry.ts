@@ -113,7 +113,7 @@ class CommandRegistry {
     out.isTTY ? `\x1b[38;2;37;99;235m${s}\x1b[0m` : s;
   private dim = (s: string, out: NodeJS.WriteStream) => (out.isTTY ? `\x1b[2m${s}\x1b[0m` : s);
 
-  printHelp(commandPath: string[], out: NodeJS.WriteStream = process.stdout, region: Region = 'StepPlan-Global'): void {
+  printHelp(commandPath: string[], out: NodeJS.WriteStream = process.stdout, region: Region = 'Global'): void {
     if (commandPath.length === 0) {
       this.printRootHelp(out);
       return;
@@ -161,7 +161,7 @@ ${b('Resources:')}
 
 ${b('Global Flags:')}
   ${a('--api-key <key>')}        StepFun API key (overrides config)
-  ${a('--region <region>')}      StepPlan-Global (default) | StepPlan-CN
+  ${a('--region <region>')}      Global (default) | CN (case-insensitive)
   ${a('--base-url <url>')}       Override generation (StepPlan) base URL
   ${a('--api-base-url <url>')}   Override management (/v1) base URL
   ${a('--output <format>')}      text | json (auto: json when piped)
@@ -173,7 +173,7 @@ ${b('Global Flags:')}
   ${a('--help')} / ${a('--version')}
 
 ${b('Getting started:')}
-  ${d('1.')} stepfun auth login --api-key sk-... --region StepPlan-Global
+  ${d('1.')} stepfun auth login --api-key sk-... --region Global
   ${d('2.')} stepfun text chat --model step-3.7-flash --message "Hello" --stream
 
 ${b('Getting help:')}

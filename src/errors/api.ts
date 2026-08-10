@@ -1,5 +1,6 @@
 import { CLIError } from './base';
 import { ExitCode } from './codes';
+import type { Region } from '../config/regions';
 
 // StepFun error body: {"error":{"message":...,"type":...,"code":...}}
 export interface ApiErrorBody {
@@ -10,8 +11,8 @@ export interface ApiErrorBody {
   };
 }
 
-function quotaHint(region: 'StepPlan-Global' | 'StepPlan-CN'): string {
-  if (region === 'StepPlan-CN') {
+function quotaHint(region: Region): string {
+  if (region === 'CN') {
     return 'StepPlan (CN) runs on a monthly Credit pool — check your balance or add a refill pack at https://platform.stepfun.com/step-plan';
   }
   return 'StepPlan (Global) enforces 5-hour and weekly prompt limits — wait for the window to reset or upgrade at https://platform.stepfun.ai/step-plan';
@@ -21,7 +22,7 @@ export function mapApiError(
   status: number,
   body: ApiErrorBody,
   url?: string,
-  region: 'StepPlan-Global' | 'StepPlan-CN' = 'StepPlan-Global',
+  region: Region = 'Global',
 ): CLIError {
   const apiMsg = body.error?.message || `HTTP ${status}`;
   const type = body.error?.type;
@@ -40,7 +41,7 @@ export function mapApiError(
     return new CLIError(
       `Insufficient balance (HTTP 402): ${apiMsg}`,
       ExitCode.QUOTA,
-      `Add funds / activate StepPlan at ${region === 'StepPlan-CN' ? 'https://platform.stepfun.com' : 'https://platform.stepfun.ai'}`,
+      `Add funds / activate StepPlan at ${region === 'CN' ? 'https://platform.stepfun.com' : 'https://platform.stepfun.ai'}`,
     );
   }
   if (status === 404) {

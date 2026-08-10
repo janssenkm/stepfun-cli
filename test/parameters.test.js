@@ -214,5 +214,5 @@ test('multi-image --out suffix stays in a dotted parent directory', async () => 
 
 test('HTTP 404 maps to GENERAL and CN 402 uses the CN hint', () => {
   assert.equal(mapApiError(404, {}).exitCode, 1);
-  assert.match(mapApiError(402, {}, undefined, 'StepPlan-CN').hint, /platform\.stepfun\.com/);
+  assert.match(mapApiError(402, {}, undefined, 'CN').hint, /platform\.stepfun\.com/);
 });

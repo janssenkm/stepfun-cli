@@ -19,6 +19,6 @@ defaults to JSON for non-TTY stdout and text for an interactive terminal.
 
 ```bash
 stepfun config show
-stepfun config set --key region --value StepPlan-CN
+stepfun config set --key region --value CN
 stepfun config set --key output --value json
 ```

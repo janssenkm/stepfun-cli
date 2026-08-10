@@ -1,4 +1,4 @@
-import { DEFAULT_REGION, isValidRegion, type Region } from './regions';
+import { DEFAULT_REGION, parseRegion, type Region } from './regions';
 
 // On-disk config (~/.stepfun-cli/config.json). Stored camelCase to match the
 // pre-existing file written by earlier versions; snake_case aliases are also
@@ -27,7 +27,10 @@ export function parseConfigFile(raw: unknown): ConfigFile {
   if (typeof apiKey === 'string') out.apiKey = apiKey;
 
   const region = obj.region;
-  if (typeof region === 'string' && isValidRegion(region)) out.region = region;
+  if (typeof region === 'string') {
+    const parsed = parseRegion(region);
+    if (parsed) out.region = parsed;
+  }
 
   const genBase = obj.genBaseUrl ?? obj.gen_base_url ?? obj.baseUrl ?? obj.base_url;
   if (typeof genBase === 'string' && genBase.startsWith('http')) out.genBaseUrl = genBase;

@@ -3,7 +3,7 @@ import { registry } from './registry';
 import { GLOBAL_OPTIONS } from './command';
 import { handleError, setErrorOutputFormat } from './errors/handler';
 import { loadConfig, readConfigFile } from './config/loader';
-import { DEFAULT_REGION, isValidRegion, type Region } from './config/regions';
+import { DEFAULT_REGION, parseRegion, type Region } from './config/regions';
 import { CLIError } from './errors/base';
 import { ExitCode } from './errors/codes';
 import { CLI_VERSION } from './version';
@@ -35,7 +35,7 @@ function helpRegion(): Region {
     process.env.STEPFUN_REGION ||
     file.region ||
     DEFAULT_REGION;
-  return isValidRegion(r) ? (r as Region) : DEFAULT_REGION;
+  return parseRegion(r) ?? DEFAULT_REGION;
 }
 
 export async function main(): Promise<void> {

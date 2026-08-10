@@ -158,7 +158,7 @@ test.before(() => new Promise((resolve) => {
   server = mockServer();
   server.listen(0, '127.0.0.1', () => {
     base = `http://127.0.0.1:${server.address().port}`;
-    config = { apiKey: 'dummy-key', genBaseUrl: base, apiBaseUrl: base, region: 'StepPlan-Global', output: 'json', timeout: 10, verbose: false, quiet: true, noColor: true, yes: false, dryRun: false, nonInteractive: true };
+    config = { apiKey: 'dummy-key', genBaseUrl: base, apiBaseUrl: base, region: 'Global', output: 'json', timeout: 10, verbose: false, quiet: true, noColor: true, yes: false, dryRun: false, nonInteractive: true };
     resolve();
   });
 }));

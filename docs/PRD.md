@@ -28,8 +28,8 @@ It implements **only StepFun's real, documented API** (verified against `platfor
 
 | Region | Generation base | Management base |
 |---|---|---|
-| StepPlan-Global | `https://api.stepfun.ai/step_plan/v1` | `https://api.stepfun.ai/v1` |
-| StepPlan-CN | `https://api.stepfun.com/step_plan/v1` | `https://api.stepfun.com/v1` |
+| Global | `https://api.stepfun.ai/step_plan/v1` | `https://api.stepfun.ai/v1` |
+| CN | `https://api.stepfun.com/step_plan/v1` | `https://api.stepfun.com/v1` |
 
 ## 5. Exit codes
 

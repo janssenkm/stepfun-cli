@@ -21,7 +21,7 @@ node dist/index.js --help
 
 ```bash
 # 1. 保存 StepPlan API Key（在 https://platform.stepfun.com 获取）
-stepfun auth login --api-key sk-... --region StepPlan-Global
+stepfun auth login --api-key sk-... --region Global
 
 # 2. 检查是否生效
 stepfun auth status
@@ -99,7 +99,7 @@ stepfun token count --model step-3.7-flash --message "统计这些 token"
 ```jsonc
 {
   "apiKey": "sk-...",
-  "region": "StepPlan-Global",          // 或 StepPlan-CN
+  "region": "Global",                   // 或 CN
   "genBaseUrl": null,                   // 可选覆盖（默认由 region 推导）
   "apiBaseUrl": null,                   // 可选覆盖
   "output": "text",                     // text | json
@@ -117,8 +117,8 @@ stepfun token count --model step-3.7-flash --message "统计这些 token"
 
 | 区域 | 生成基址 | 管理基址 |
 |---|---|---|
-| `StepPlan-Global` | `https://api.stepfun.ai/step_plan/v1` | `https://api.stepfun.ai/v1` |
-| `StepPlan-CN` | `https://api.stepfun.com/step_plan/v1` | `https://api.stepfun.com/v1` |
+| `Global` | `https://api.stepfun.ai/step_plan/v1` | `https://api.stepfun.ai/v1` |
+| `CN` | `https://api.stepfun.com/step_plan/v1` | `https://api.stepfun.com/v1` |
 
 同一个 StepPlan API Key 在两个基址都有效。生成类端点按订阅计费；管理类端点是开放平台通用功能。
 
@@ -126,7 +126,7 @@ stepfun token count --model step-3.7-flash --message "统计这些 token"
 
 ```
 --api-key <key>          StepFun API Key（覆盖配置）
---region <region>        StepPlan-Global | StepPlan-CN
+--region <region>        Global | CN（不区分大小写）
 --base-url <url>         覆盖生成（StepPlan）基址
 --api-base-url <url>     覆盖管理（/v1）基址
 --output <format>        text | json（管道时自动 json）

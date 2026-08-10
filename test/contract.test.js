@@ -96,6 +96,14 @@ test('region validation rejects bad value', () => {
   assert.match(r.stderr, /Invalid region/);
 });
 
+test('--region accepts Global and CN case-insensitively', () => {
+  for (const region of ['Global', 'GLOBAL', 'global', 'cn', 'CN']) {
+    const r = run(['models', 'list', '--region', region, '--dry-run', '--output', 'json']);
+    assert.equal(r.code, 0, `${region}: ${r.stderr}`);
+    assert.equal(JSON.parse(r.stdout).request.path, '/models');
+  }
+});
+
 test('invalid CLI and environment output formats exit USAGE(2)', () => {
   const cli = run(['auth', 'status', '--output', 'yaml']);
   assert.equal(cli.code, 2);

@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync, renameSync, existsSync, chmodSync } from 'fs';
 import { parseConfigFile, DEFAULTS, type Config, type ConfigFile } from './schema';
-import { REGIONS, DEFAULT_REGION, isValidRegion, type Region } from './regions';
+import { REGIONS, DEFAULT_REGION, parseRegion } from './regions';
 import { ensureConfigDir, getConfigPath } from './paths';
 import { detectOutputFormat, type OutputFormat } from '../output/formatter';
 import { CLIError } from '../errors/base';
@@ -38,19 +38,20 @@ export function loadConfig(flags: GlobalFlags): Config {
     process.env.STEPFUN_API_KEY ||
     file.apiKey;
 
-  const explicitRegion =
+  const requestedRegion =
     (flags.region as string | undefined) ||
     process.env.STEPFUN_REGION ||
     file.region;
 
-  if (explicitRegion && !isValidRegion(explicitRegion)) {
+  const explicitRegion = requestedRegion ? parseRegion(requestedRegion) : undefined;
+  if (requestedRegion && !explicitRegion) {
     throw new CLIError(
-      `Invalid region "${explicitRegion}". Valid values: ${Object.keys(REGIONS).join(', ')}`,
+      `Invalid region "${requestedRegion}". Valid values: ${Object.keys(REGIONS).join(', ')}`,
       ExitCode.USAGE,
     );
   }
 
-  const region = (explicitRegion || DEFAULT_REGION) as Region;
+  const region = explicitRegion || DEFAULT_REGION;
   const profile = REGIONS[region];
 
   const genBaseUrl =

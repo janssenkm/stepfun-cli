@@ -19,7 +19,7 @@ Requires Node.js ≥ 18 (uses native `fetch`, `FormData`, `AbortSignal`).
 
 ```bash
 # 1. Save your StepPlan API key (get one at https://platform.stepfun.ai)
-stepfun auth login --api-key sk-... --region StepPlan-Global
+stepfun auth login --api-key sk-... --region Global
 
 # 2. Check it works
 stepfun auth status
@@ -97,7 +97,7 @@ Config lives at `~/.stepfun-cli/config.json`:
 ```jsonc
 {
   "apiKey": "sk-...",
-  "region": "StepPlan-Global",          // or StepPlan-CN
+  "region": "Global",                   // or CN
   "genBaseUrl": null,                   // optional override (defaults to region)
   "apiBaseUrl": null,                   // optional override
   "output": "text",                     // text | json
@@ -115,8 +115,8 @@ Config lives at `~/.stepfun-cli/config.json`:
 
 | Region | Generation base | Management base |
 |---|---|---|
-| `StepPlan-Global` | `https://api.stepfun.ai/step_plan/v1` | `https://api.stepfun.ai/v1` |
-| `StepPlan-CN` | `https://api.stepfun.com/step_plan/v1` | `https://api.stepfun.com/v1` |
+| `Global` | `https://api.stepfun.ai/step_plan/v1` | `https://api.stepfun.ai/v1` |
+| `CN` | `https://api.stepfun.com/step_plan/v1` | `https://api.stepfun.com/v1` |
 
 The same StepPlan API key is valid on both bases. Generation endpoints are metered against your StepPlan subscription; management endpoints are general open-platform features.
 
@@ -124,7 +124,7 @@ The same StepPlan API key is valid on both bases. Generation endpoints are meter
 
 ```
 --api-key <key>          StepFun API key (overrides config)
---region <region>        StepPlan-Global | StepPlan-CN
+--region <region>        Global | CN (case-insensitive)
 --base-url <url>         Override the generation (StepPlan) base URL
 --api-base-url <url>     Override the management (/v1) base URL
 --output <format>        text | json (auto: json when piped)
