@@ -55,6 +55,13 @@ test('parseFlags rejects unknown flags', () => {
   );
 });
 
+test('parseFlags rejects unknown short flags instead of ignoring them', () => {
+  assert.throws(
+    () => parseFlags(['-o', 'json'], GLOBAL_OPTIONS),
+    /Unknown flag -o/,
+  );
+});
+
 test('parseFlags does not consume the next flag as a missing value', () => {
   assert.throws(
     () => parseFlags(['--model', '--stream'], [

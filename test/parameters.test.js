@@ -40,20 +40,32 @@ for (const c of [
   { name: 'messages rejects invalid tool JSON', args: ['text', 'messages', '--message', 'hi', '--tool', '{bad', '--dry-run'], error: /not valid JSON/ },
   { name: 'boolean rejects an assigned value', args: ['text', 'chat', '--message', 'hi', '--stream=false', '--dry-run'], error: /does not take a value/ },
   { name: 'chat rejects temperature above range', args: ['text', 'chat', '--message', 'hi', '--temperature', '2.1', '--dry-run'], error: /between 0 and 2/ },
+  { name: 'chat rejects top-p below range', args: ['text', 'chat', '--message', 'hi', '--top-p', '-0.01', '--dry-run'], error: /between 0 and 1/ },
+  { name: 'chat rejects max tokens fractions', args: ['text', 'chat', '--message', 'hi', '--max-tokens', '1.5', '--dry-run'], error: /must be an integer/ },
+  { name: 'chat rejects frequency penalty above range', args: ['text', 'chat', '--message', 'hi', '--frequency-penalty', '1.01', '--dry-run'], error: /between 0 and 1/ },
   { name: 'chat rejects fractional choice count', args: ['text', 'chat', '--message', 'hi', '--n', '1.5', '--dry-run'], error: /must be an integer/ },
   { name: 'chat rejects invalid response format', args: ['text', 'chat', '--message', 'hi', '--response-format', 'xml', '--dry-run'], error: /must be one of/ },
   { name: 'messages rejects invalid effort', args: ['text', 'messages', '--message', 'hi', '--effort', 'extreme', '--dry-run'], error: /--effort must be one of/ },
+  { name: 'messages rejects zero top-k', args: ['text', 'messages', '--message', 'hi', '--top-k', '0', '--dry-run'], error: /between 1 and/ },
+  { name: 'messages rejects top-p above range', args: ['text', 'messages', '--message', 'hi', '--top-p', '1.01', '--dry-run'], error: /between 0 and 1/ },
   { name: 'responses rejects ambiguous inputs', args: ['text', 'responses', '--input', 'one', '--message', 'two', '--dry-run'], error: /not both/ },
   { name: 'responses rejects unsupported tool choice', args: ['text', 'responses', '--input', 'x', '--tool-choice', 'required', '--dry-run'], error: /--tool-choice must be one of/ },
+  { name: 'responses rejects fractional output token limit', args: ['text', 'responses', '--input', 'x', '--max-output-tokens', '1.5', '--dry-run'], error: /must be an integer/ },
   { name: 'image rejects zero steps', args: ['image', 'generate', '--prompt', 'x', '--steps', '0', '--dry-run'], error: /between 1 and 50/ },
   { name: 'image rejects fractional steps', args: ['image', 'generate', '--prompt', 'x', '--steps', '1.5', '--dry-run'], error: /must be an integer/ },
   { name: 'image rejects unsupported response format', args: ['image', 'generate', '--prompt', 'x', '--response-format', 'bytes', '--dry-run'], error: /must be one of/ },
   { name: 'image rejects unsupported size', args: ['image', 'generate', '--prompt', 'x', '--size', '1x1', '--dry-run'], error: /--size must be one of/ },
+  { name: 'image rejects cfg scale below range', args: ['image', 'generate', '--prompt', 'x', '--cfg-scale', '0.99', '--dry-run'], error: /between 1 and 10/ },
+  { name: 'image rejects more than one image', args: ['image', 'generate', '--prompt', 'x', '--n', '2', '--dry-run'], error: /between 1 and 1/ },
   { name: 'image rejects competing output destinations', args: ['image', 'generate', '--prompt', 'x', '--out', 'a.png', '--out-dir', 'out', '--dry-run'], error: /not both/ },
+  { name: 'image rejects prompt beyond length limit', args: ['image', 'generate', '--prompt', 'x'.repeat(513), '--dry-run'], error: /at most 512 characters/ },
   { name: 'speech rejects competing text sources', args: ['speech', 'synthesize', '--text', 'x', '--text-file', 'x.txt', '--dry-run'], error: /not both/ },
   { name: 'speech rejects speed below range', args: ['speech', 'synthesize', '--text', 'x', '--speed', '0.49', '--dry-run'], error: /between 0.5 and 2/ },
   { name: 'speech rejects unsupported sample rate', args: ['speech', 'synthesize', '--text', 'x', '--sample-rate', '44100', '--dry-run'], error: /sample-rate must be one of/ },
   { name: 'speech rejects unsupported format', args: ['speech', 'synthesize', '--text', 'x', '--format', 'aac', '--dry-run'], error: /--format must be one of/ },
+  { name: 'speech rejects volume above range', args: ['speech', 'synthesize', '--text', 'x', '--volume', '2.01', '--dry-run'], error: /between 0.1 and 2/ },
+  { name: 'speech rejects overlong text', args: ['speech', 'synthesize', '--text', 'x'.repeat(1001), '--dry-run'], error: /at most 1000 characters/ },
+  { name: 'speech rejects invalid voice label key', args: ['speech', 'synthesize', '--text', 'x', '--voice-label', 'pitch:high', '--dry-run'], error: /key must be lang\|emotion\|style/ },
   { name: 'global timeout rejects zero', args: ['text', 'chat', '--message', 'hi', '--timeout', '0', '--dry-run'], error: /timeout must be a positive number/ },
   { name: 'file list rejects zero limit', args: ['file', 'list', '--limit', '0', '--dry-run'], error: /--limit must be between/ },
   { name: 'file list rejects fractional limit', args: ['file', 'list', '--limit', '1.5', '--dry-run'], error: /--limit must be an integer/ },
@@ -62,6 +74,7 @@ for (const c of [
   { name: 'file upload rejects unsupported purpose', args: ['file', 'upload', '--url', 'https://example.com/x', '--purpose', 'fine-tune', '--dry-run'], error: /--purpose must be one of/ },
   { name: 'ASR rejects unknown explicit format', args: ['speech', 'recognize', '--file', path.join(TMP, 'audio.wav'), '--format-type', 'aac', '--dry-run'], error: /--format-type must be one of/ },
   { name: 'ASR rejects zero channel', args: ['speech', 'recognize', '--file', path.join(TMP, 'audio.wav'), '--channel', '0', '--dry-run'], error: /--channel must be between/ },
+  { name: 'ASR rejects fractional sample rate', args: ['speech', 'recognize', '--file', path.join(TMP, 'audio.wav'), '--rate', '16000.5', '--dry-run'], error: /--rate must be an integer/ },
 ]) {
   test(`parameter error: ${c.name}`, () => {
     if (c.name === 'responses rejects invalid schema JSON') fs.writeFileSync(c.args[5], '{bad');
@@ -71,6 +84,12 @@ for (const c of [
     assert.match(r.stderr, c.error);
   });
 }
+
+test('CLI rejects an unknown short option', () => {
+  const r = run(['models', 'list', '-o', 'json', '--dry-run']);
+  assert.equal(r.code, 2);
+  assert.match(r.stderr, /Unknown flag -o/);
+});
 
 test('messages file validates every message object', () => {
   const messages = path.join(TMP, 'bad-messages.json');
@@ -139,6 +158,32 @@ test('image generation preserves zero-valued numeric flags and booleans', () => 
   assert.equal(req.body.cfg_scale, 1);
   assert.equal(req.body.text_mode, true);
   assert.equal(req.body.response_format, 'url');
+});
+
+test('numeric options accept their documented inclusive boundaries', () => {
+  const chat = dry([
+    'text', 'chat', '--message', 'hi', '--max-tokens', '1', '--temperature', '0',
+    '--top-p', '1', '--n', '1', '--frequency-penalty', '1',
+  ]);
+  assert.equal(chat.body.max_tokens, 1);
+  assert.equal(chat.body.temperature, 0);
+  assert.equal(chat.body.top_p, 1);
+  assert.equal(chat.body.n, 1);
+  assert.equal(chat.body.frequency_penalty, 1);
+
+  const image = dry([
+    'image', 'generate', '--prompt', 'x', '--n', '1', '--steps', '50', '--cfg-scale', '10',
+  ]);
+  assert.equal(image.body.n, 1);
+  assert.equal(image.body.steps, 50);
+  assert.equal(image.body.cfg_scale, 10);
+
+  const speech = dry([
+    'speech', 'synthesize', '--text', 'x', '--speed', '0.5', '--volume', '0.1', '--sample-rate', '48000',
+  ]);
+  assert.equal(speech.body.speed, 0.5);
+  assert.equal(speech.body.volume, 0.1);
+  assert.equal(speech.body.sampleRate, 48000);
 });
 
 test('PCM recognition requires the complete format tuple', () => {

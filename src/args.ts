@@ -160,7 +160,12 @@ export function parseFlags(argv: string[], options: OptionDef[]): GlobalFlags {
       } else {
         (flags as Record<string, unknown>)[camelKey] = value;
       }
-    } else if (!arg.startsWith('-')) {
+    } else if (arg.startsWith('-')) {
+      // The CLI intentionally has no short options (apart from -h/-v handled
+      // by main). Silently treating a typo such as `-o` as absent can cause a
+      // request to run with unexpected defaults.
+      throw new CLIError(`Unknown flag ${arg}.`, ExitCode.USAGE);
+    } else {
       positional.push(arg);
     }
 
