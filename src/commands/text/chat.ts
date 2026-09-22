@@ -12,7 +12,7 @@ export default defineCommand({
   description: 'Chat via the OpenAI-compatible Completions API (POST /chat/completions)',
   usage: 'stepfun text chat --model <model> (--message <text> | --messages-file <path>) [flags]',
   options: [
-    { flag: '--model <model>', description: 'Model id (default: step-3.7-flash)' },
+    { flag: '--model <model>', description: 'Model id (default: step-5-preview)' },
     { flag: '--message <text>', description: 'Message (repeatable; optional "role:" prefix)', type: 'array' },
     { flag: '--messages-file <path>', description: 'JSON messages file (- for stdin)' },
     { flag: '--system <text>', description: 'System prompt' },
@@ -23,7 +23,7 @@ export default defineCommand({
     { flag: '--temperature <n>', description: '0.0–2.0', type: 'number' },
     { flag: '--top-p <n>', description: 'Nucleus sampling', type: 'number' },
     { flag: '--n <n>', description: 'Number of choices', type: 'number' },
-    { flag: '--stop <seq>', description: 'Stop sequence(s)' },
+    { flag: '--stop <seq>', description: 'Stop sequence (repeatable; API accepts string | string[])', type: 'array' },
     { flag: '--frequency-penalty <n>', description: '0.0–1.0', type: 'number' },
     { flag: '--response-format <fmt>', description: 'text | json_object' },
     { flag: '--reasoning-effort <lvl>', description: 'low | medium | high' },
@@ -33,8 +33,8 @@ export default defineCommand({
     { flag: '--show-reasoning', description: 'Print reasoning content to stderr' },
   ],
   examples: [
-    'stepfun text chat --model step-3.7-flash --message "Hello" --stream',
-    'stepfun text chat --model step-3.7-flash --message "Solve: (80+20)/5" --reasoning-effort high',
+    'stepfun text chat --model step-5-preview --message "Hello" --stream',
+    'stepfun text chat --model step-5-preview --message "Solve: (80+20)/5" --reasoning-effort high',
   ],
   apiDocs: '/docs/en/api-reference/chat/chat-completion-create',
   async run(config, flags) {
@@ -68,6 +68,8 @@ export default defineCommand({
     if (flags.responseFormat) body.response_format = { type: flags.responseFormat };
     if (flags.reasoningEffort) body.reasoning_effort = flags.reasoningEffort;
     if (flags.reasoningFormat) body.reasoning_format = flags.reasoningFormat;
+    // tool_choice is intentionally not exposed: StepFun's /chat/completions docs
+    // do not list it, so the server's handling of auto/none/required is unverified.
     const tools = parseTools(flags.tool as string[] | undefined);
     if (tools.length > 0) body.tools = tools;
 

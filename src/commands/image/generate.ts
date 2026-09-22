@@ -13,7 +13,7 @@ export default defineCommand({
   options: [
     { flag: '--prompt <text>', description: 'Image description (≤512 chars)', required: true },
     { flag: '--model <model>', description: 'Model id (default: step-image-edit-2)' },
-    { flag: '--size <size>', description: 'e.g. 1024x1024, 768x1360, 1360x768' },
+    { flag: '--size <size>', description: '1024x1024 | 768x1360 | 896x1184 | 1360x768 | 1184x896' },
     { flag: '--n <n>', description: 'Number of images (server currently supports 1)', type: 'number' },
     { flag: '--seed <n>', description: 'Random seed', type: 'number' },
     { flag: '--steps <n>', description: 'Generation steps (1–50, default 8)', type: 'number' },

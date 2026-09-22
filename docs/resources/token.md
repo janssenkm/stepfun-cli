@@ -12,5 +12,5 @@ token count --model <model> (--message <text> | --messages-file <path>)
 ## Example
 
 ```bash
-stepfun token count --model step-3.7-flash --message "count these tokens"
+stepfun token count --model step-5-preview --message "count these tokens"
 ```

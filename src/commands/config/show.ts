@@ -24,7 +24,7 @@ export default defineCommand({
       output: file.output ?? 'text',
       timeout: file.timeout ?? 120,
       defaults: {
-        text: file.defaultTextModel ?? 'step-3.7-flash',
+        text: file.defaultTextModel ?? 'step-5-preview',
         speechTts: file.defaultSpeechTtsModel ?? 'stepaudio-2.5-tts',
         speechAsr: file.defaultSpeechAsrModel ?? 'stepaudio-2.5-asr',
         image: file.defaultImageModel ?? 'step-image-edit-2',

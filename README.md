@@ -26,7 +26,7 @@ stepfun auth status
 stepfun models list
 
 # 3. Chat (streaming)
-stepfun text chat --model step-3.7-flash --message "Hello, StepFun!" --stream
+stepfun text chat --model step-5-preview --message "Hello, StepFun!" --stream
 ```
 
 ## Commands
@@ -45,24 +45,28 @@ stepfun text chat --model step-3.7-flash --message "Hello, StepFun!" --stream
 
 Add `--help` to any command for full options, e.g. `stepfun text chat --help`. Per-resource flag reference: [docs/resources/](docs/resources/); full doc index: [docs/README.md](docs/README.md).
 
+### Models
+
+StepPlan currently exposes `step-5-preview` (default), `step-3.7-flash`, `step-3.5-flash`, and `step-3.5-flash-2603` for text; `stepaudio-2.5-tts` / `stepaudio-2.5-asr` for speech; `step-image-edit-2` for image. CLI defaults track the latest GA release — pass `--model` to opt into a specific revision or preview. CN adds realtime, chat, and router models. See `docs/resources/models.md` for the full table; always treat `models list` as the source of truth.
+
 ### Chat
 
 ```bash
 # OpenAI-compatible Completions (streaming, with reasoning)
-stepfun text chat --model step-3.7-flash --message "Solve: (80+20)/5" \
+stepfun text chat --model step-5-preview --message "Solve: (80+20)/5" \
   --reasoning-effort high --stream
 
 # Multimodal (image input)
-stepfun text chat --model step-3.7-flash --message "describe this" --image photo.jpg
+stepfun text chat --model step-5-preview --message "describe this" --image photo.jpg
 
 # Anthropic-compatible Messages
-stepfun text messages --model step-3.7-flash --message "hi" --max-tokens 256
+stepfun text messages --model step-5-preview --message "hi" --max-tokens 256
 
 # OpenAI Responses (supports structured output)
 stepfun text responses --input "extract sentiment" --json-schema schema.json --effort high
 
 # Function/tool calling
-stepfun text chat --model step-3.7-flash --message "weather in Beijing?" \
+stepfun text chat --model step-5-preview --message "weather in Beijing?" \
   --tool '{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}'
 ```
 
@@ -87,7 +91,7 @@ stepfun speech recognize --file recording.mp3 --language zh
 stepfun file upload --file image.png
 stepfun file list
 stepfun account show
-stepfun token count --model step-3.7-flash --message "count these tokens"
+stepfun token count --model step-5-preview --message "count these tokens"
 ```
 
 ## Configuration
@@ -102,7 +106,7 @@ Config lives at `~/.stepfun-cli/config.json`:
   "apiBaseUrl": null,                   // optional override
   "output": "text",                     // text | json
   "timeout": 120,
-  "defaultTextModel": "step-3.7-flash",
+  "defaultTextModel": "step-5-preview",
   "defaultSpeechTtsModel": "stepaudio-2.5-tts",
   "defaultSpeechAsrModel": "stepaudio-2.5-asr",
   "defaultImageModel": "step-image-edit-2"
@@ -133,6 +137,7 @@ The same StepPlan API key is valid on both bases. Generation endpoints are meter
 --verbose                Print HTTP request/response details
 --dry-run                Print the request body without calling the API
 --non-interactive        Disable prompts (CI/agent mode)
+--yes                    Skip confirmation prompts
 --help, --version
 ```
 

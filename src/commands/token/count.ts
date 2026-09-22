@@ -16,7 +16,7 @@ export default defineCommand({
     { flag: '--system <text>', description: 'System prompt' },
     { flag: '--image <path|url>', description: 'Image attachment (repeatable)', type: 'array' },
   ],
-  examples: ['stepfun token count --model step-3.7-flash --message "hello"'],
+  examples: ['stepfun token count --model step-5-preview --message "hello"'],
   apiDocs: '/docs/en/api-reference/token-count',
   async run(config, flags) {
     const model = (flags.model as string | undefined) || config.defaultTextModel;

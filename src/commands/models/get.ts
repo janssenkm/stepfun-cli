@@ -9,7 +9,7 @@ export default defineCommand({
   description: 'Get details for a single model',
   usage: 'stepfun models get <id>',
   positionalArgs: 1,
-  examples: ['stepfun models get step-3.7-flash'],
+  examples: ['stepfun models get step-5-preview'],
   apiDocs: '/docs/en/api-reference/models/retrieve',
   async run(config, flags) {
     const id = (flags._positional?.[0] as string | undefined) || (flags.id as string | undefined);

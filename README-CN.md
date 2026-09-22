@@ -28,7 +28,7 @@ stepfun auth status
 stepfun models list
 
 # 3. 对话（流式）
-stepfun text chat --model step-3.7-flash --message "你好，阶跃！" --stream
+stepfun text chat --model step-5-preview --message "你好，阶跃！" --stream
 ```
 
 ## 命令
@@ -47,24 +47,28 @@ stepfun text chat --model step-3.7-flash --message "你好，阶跃！" --stream
 
 任意命令加 `--help` 查看完整选项，例如 `stepfun text chat --help`。各资源 flag 参考：[docs/resources/](docs/resources/)；完整文档索引：[docs/README.md](docs/README.md)。
 
+### 模型
+
+StepPlan 当前提供：`step-5-preview`（默认）、`step-3.7-flash`、`step-3.5-flash`、`step-3.5-flash-2603`（文本）；`stepaudio-2.5-tts` / `stepaudio-2.5-asr`（语音）；`step-image-edit-2`（图像）。CLI 默认值跟随最新 GA 版本——通过 `--model` 选择特定修订或预览。CN 额外提供 realtime、chat 和 router 模型。完整表格见 `docs/resources/models.md`；请以 `models list` 的实际返回为准。
+
 ### 对话
 
 ```bash
 # OpenAI 兼容 Completions（流式 + 推理）
-stepfun text chat --model step-3.7-flash --message "计算 (80+20)/5" \
+stepfun text chat --model step-5-preview --message "计算 (80+20)/5" \
   --reasoning-effort high --stream
 
 # 多模态（图像输入）
-stepfun text chat --model step-3.7-flash --message "描述这张图" --image photo.jpg
+stepfun text chat --model step-5-preview --message "描述这张图" --image photo.jpg
 
 # Anthropic 兼容 Messages
-stepfun text messages --model step-3.7-flash --message "hi" --max-tokens 256
+stepfun text messages --model step-5-preview --message "hi" --max-tokens 256
 
 # OpenAI Responses（支持结构化输出）
 stepfun text responses --input "提取情感" --json-schema schema.json --effort high
 
 # 工具调用 / Function Calling
-stepfun text chat --model step-3.7-flash --message "北京天气如何？" \
+stepfun text chat --model step-5-preview --message "北京天气如何？" \
   --tool '{"type":"function","function":{"name":"get_weather","parameters":{"type":"object","properties":{"city":{"type":"string"}}}}}'
 ```
 
@@ -89,7 +93,7 @@ stepfun speech recognize --file recording.mp3 --language zh
 stepfun file upload --file image.png
 stepfun file list
 stepfun account show
-stepfun token count --model step-3.7-flash --message "统计这些 token"
+stepfun token count --model step-5-preview --message "统计这些 token"
 ```
 
 ## 配置
@@ -104,7 +108,7 @@ stepfun token count --model step-3.7-flash --message "统计这些 token"
   "apiBaseUrl": null,                   // 可选覆盖
   "output": "text",                     // text | json
   "timeout": 120,
-  "defaultTextModel": "step-3.7-flash",
+  "defaultTextModel": "step-5-preview",
   "defaultSpeechTtsModel": "stepaudio-2.5-tts",
   "defaultSpeechAsrModel": "stepaudio-2.5-asr",
   "defaultImageModel": "step-image-edit-2"
@@ -135,6 +139,7 @@ stepfun token count --model step-3.7-flash --message "统计这些 token"
 --verbose                打印 HTTP 请求/响应细节
 --dry-run                只打印请求体，不调用 API
 --non-interactive        关闭交互提示（CI/Agent 模式）
+--yes                    跳过确认提示
 --help, --version
 ```
 

@@ -4,25 +4,24 @@ import { formatOutput, dryRun } from '../../output/formatter';
 import { ensureFileExists, describeFile } from '../../utils/fs';
 import { CLIError } from '../../errors/base';
 import { ExitCode } from '../../errors/codes';
-import { oneOf } from '../../utils/validation';
 import { statSync } from 'fs';
 
 export default defineCommand({
   name: 'file upload',
   description: 'Upload a file to StepFun storage',
-  usage: 'stepfun file upload (--file <path> | --url <url>) [--purpose <purpose>]',
+  usage: 'stepfun file upload (--file <path> | --url <url>)',
   options: [
     { flag: '--file <path>', description: 'Local file to upload' },
     { flag: '--url <url>', description: 'Remote file URL (alternative to --file)' },
-    { flag: '--purpose <purpose>', description: 'Upload purpose (default: storage)' },
   ],
   examples: ['stepfun file upload --file image.png', 'stepfun file upload --url https://example.com/a.mp3'],
   apiDocs: '/docs/en/api-reference/files/create',
   async run(config, flags) {
     const file = flags.file as string | undefined;
     const url = flags.url as string | undefined;
-    const purpose = (flags.purpose as string | undefined) || 'storage';
-    oneOf('--purpose', purpose, ['storage']);
+    // The /files API accepts only purpose="storage" (per StepFun docs), so it is
+    // not exposed as a user-facing flag; the value is fixed here.
+    const purpose = 'storage';
 
     if (!file && !url) {
       throw new CLIError('Either --file or --url is required.', ExitCode.USAGE);

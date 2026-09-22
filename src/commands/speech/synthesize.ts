@@ -64,6 +64,15 @@ export default defineCommand({
         throw new CLIError('--sample-rate must be one of: 8000, 16000, 22050, 24000, 48000.', ExitCode.USAGE);
       }
     }
+    // voice_label is a step-tts-2 feature; stepaudio-2.5-tts (the default) rejects
+    // it with an error (per StepFun TTS docs). Fail fast instead of letting the
+    // server reject the request.
+    if (flags.voiceLabel && model === 'stepaudio-2.5-tts') {
+      throw new CLIError(
+        '--voice-label is not supported by stepaudio-2.5-tts (the API rejects it). Use --instruction, or pass --model step-tts-2.',
+        ExitCode.USAGE,
+      );
+    }
 
     const opts: SpeechOpts = {
       model,

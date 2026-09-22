@@ -7,13 +7,14 @@ Status: **Supported**. Three chat APIs, all on the generation base (`/step_plan/
 `POST /chat/completions`
 
 ```
---model <model>            default: step-3.7-flash
+--model <model>            default: step-5-preview
 --message <text>           repeatable; optional "role:" prefix (user:hi)
 --messages-file <path>     JSON messages array (- for stdin)
 --system <text>            system prompt
 --image/--video/--audio    multimodal attachments (repeatable)
 --max-tokens <n>  --temperature <n>  --top-p <n>  --n <n>
---stop <seq>  --frequency-penalty <n>
+--stop <seq>               repeatable (string | string[])
+--frequency-penalty <n>    0.0–1.0
 --response-format <text|json_object>
 --reasoning-effort <low|medium|high>
 --reasoning-format <general|deepseek-style>
@@ -24,10 +25,10 @@ Status: **Supported**. Three chat APIs, all on the generation base (`/step_plan/
 
 ## `text messages` — Anthropic Messages
 
-`POST /messages` (Anthropic-compatible; use `step-3.7-flash`)
+`POST /messages` (Anthropic-compatible; use `step-5-preview`)
 
 ```
---model <model>            default: step-3.7-flash
+--model <model>            default: step-5-preview
 --message <text>           repeatable; optional "role:" prefix
 --messages-file <path>
 --system <text>
@@ -42,7 +43,7 @@ Status: **Supported**. Three chat APIs, all on the generation base (`/step_plan/
 
 ## `text responses` — OpenAI Responses
 
-`POST /responses` (only `step-3.7-flash`)
+`POST /responses` (only `step-5-preview`)
 
 ```
 --input <text>             plain-text single turn
@@ -60,9 +61,9 @@ Status: **Supported**. Three chat APIs, all on the generation base (`/step_plan/
 ## Examples
 
 ```bash
-stepfun text chat --model step-3.7-flash --message "Hello" --stream
-stepfun text chat --model step-3.7-flash --message "describe this" --image photo.jpg
-stepfun text messages --model step-3.7-flash --message "hi" --max-tokens 256
+stepfun text chat --model step-5-preview --message "Hello" --stream
+stepfun text chat --model step-5-preview --message "describe this" --image photo.jpg
+stepfun text messages --model step-5-preview --message "hi" --max-tokens 256
 stepfun text responses --input "write a haiku" --effort high --stream
 ```
 

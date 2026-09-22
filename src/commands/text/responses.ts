@@ -25,7 +25,7 @@ export default defineCommand({
   description: 'Chat via the OpenAI-compatible Responses API (POST /responses)',
   usage: 'stepfun text responses (--input <text> | --message <text>) [flags]',
   options: [
-    { flag: '--model <model>', description: 'Model id (default: step-3.7-flash)' },
+    { flag: '--model <model>', description: 'Model id (default: step-5-preview)' },
     { flag: '--input <text>', description: 'Plain-text input (single user turn)' },
     { flag: '--message <text>', description: 'Message (repeatable; optional "role:" prefix)', type: 'array' },
     { flag: '--messages-file <path>', description: 'JSON messages file (- for stdin)' },
@@ -45,7 +45,7 @@ export default defineCommand({
   ],
   apiDocs: '/docs/en/api-reference/responses/responses-create',
   async run(config, flags) {
-    const model = (flags.model as string | undefined) || config.defaultTextModel || 'step-3.7-flash';
+    const model = (flags.model as string | undefined) || config.defaultTextModel || 'step-5-preview';
     const showReasoning = !!flags.showReasoning;
     mutuallyExclusive('--input', flags.input, '--message/--messages-file', flags.message ?? flags.messagesFile);
     numberRange('--max-output-tokens', flags.maxOutputTokens as number | undefined, 1, Number.MAX_SAFE_INTEGER, true);

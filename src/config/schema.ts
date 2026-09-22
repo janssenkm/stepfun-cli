@@ -81,7 +81,7 @@ export interface Config {
 }
 
 export const DEFAULTS = {
-  textModel: 'step-3.7-flash',
+  textModel: 'step-5-preview',
   speechTtsModel: 'stepaudio-2.5-tts',
   speechAsrModel: 'stepaudio-2.5-asr',
   imageModel: 'step-image-edit-2',

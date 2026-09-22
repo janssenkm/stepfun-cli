@@ -170,11 +170,12 @@ ${b('Global Flags:')}
   ${a('--verbose')}              Print HTTP request/response details
   ${a('--dry-run')}              Print the request body without calling the API
   ${a('--non-interactive')}      Disable prompts (CI/agent mode)
+  ${a('--yes')}                  Skip confirmation prompts
   ${a('--help')} / ${a('--version')}
 
 ${b('Getting started:')}
   ${d('1.')} stepfun auth login --api-key sk-... --region Global
-  ${d('2.')} stepfun text chat --model step-3.7-flash --message "Hello" --stream
+  ${d('2.')} stepfun text chat --model step-5-preview --message "Hello" --stream
 
 ${b('Getting help:')}
   ${d('Add --help after any command, e.g.')} stepfun text chat --help

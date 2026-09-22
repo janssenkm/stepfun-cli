@@ -12,7 +12,7 @@ export default defineCommand({
   description: 'Chat via the Anthropic-compatible Messages API (POST /messages)',
   usage: 'stepfun text messages --model <model> --message <text> [--max-tokens <n>] [flags]',
   options: [
-    { flag: '--model <model>', description: 'Model id (default: step-3.7-flash)' },
+    { flag: '--model <model>', description: 'Model id (default: step-5-preview)' },
     { flag: '--message <text>', description: 'Message (repeatable; optional "role:" prefix)', type: 'array' },
     { flag: '--messages-file <path>', description: 'JSON messages file (- for stdin)' },
     { flag: '--system <text>', description: 'System prompt' },
@@ -29,7 +29,7 @@ export default defineCommand({
   examples: ['stepfun text messages --model step-3.5-flash --message "Hi" --max-tokens 256'],
   apiDocs: '/docs/en/api-reference/chat/messages-create',
   async run(config, flags) {
-    const model = (flags.model as string | undefined) || config.defaultTextModel || 'step-3.7-flash';
+    const model = (flags.model as string | undefined) || config.defaultTextModel || 'step-5-preview';
     const maxTokens = (flags.maxTokens as number | undefined) ?? 1024;
     if (!maxTokens || maxTokens <= 0) throw new CLIError('--max-tokens must be > 0.', ExitCode.USAGE);
     numberRange('--max-tokens', maxTokens, 1, Number.MAX_SAFE_INTEGER, true);
@@ -46,6 +46,8 @@ export default defineCommand({
     if (flags.topK !== undefined) body.top_k = Number(flags.topK);
     if (flags.stopSequence) body.stop_sequences = flags.stopSequence;
     if (flags.effort) body.output_config = { effort: flags.effort };
+    // tool_choice is intentionally not exposed: StepFun's /messages docs list only
+    // "currently confirmed supported fields" and tool_choice is not among them.
     const tools = parseTools(flags.tool as string[] | undefined);
     if (tools.length > 0) body.tools = tools;
 
